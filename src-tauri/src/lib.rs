@@ -475,14 +475,26 @@ pub fn run() {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        use tauri_plugin_window_state::StateFlags;
+
         // The cat window is now a full-screen overlay we size ourselves each
         // launch, so keep the window-state plugin from restoring/persisting its
-        // geometry (it still manages the details window).
+        // geometry (it still manages the details window). We restrict the saved
+        // flags to POSITION + SIZE: the details window opens hidden and toggles
+        // via the tray/cat, so restoring VISIBLE/DECORATIONS would fight that.
         builder = builder.plugin(
             tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::POSITION | StateFlags::SIZE)
                 .with_denylist(&["cat"])
                 .build(),
         );
+        // Autostart via a macOS LaunchAgent. Registration is opt-in from the
+        // details window — we never enable it here, so a fresh install stays off
+        // until the user flips the toggle.
+        builder = builder.plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
         builder = builder.plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts([GRAB_SHORTCUT])

@@ -22,6 +22,7 @@ function merge(partial: Partial<Config> | undefined | null): Config {
   return {
     exhaustedTokenThreshold: p.exhaustedTokenThreshold ?? DEFAULT_CONFIG.exhaustedTokenThreshold,
     catColor: p.catColor ?? DEFAULT_CONFIG.catColor,
+    autostart: p.autostart ?? DEFAULT_CONFIG.autostart,
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
   };
 }

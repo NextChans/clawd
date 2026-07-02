@@ -71,6 +71,10 @@ export interface Config {
   exhaustedTokenThreshold: number;
   thresholds: Thresholds;
   catColor: CatColor;
+  /** Whether the app registers a macOS LaunchAgent to start at login. Opt-in:
+   * defaults to `false` so a fresh install never auto-registers. The autostart
+   * plugin is the source of truth (`isEnabled()`); this mirrors it for the UI. */
+  autostart: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -82,6 +86,7 @@ export const DEFAULT_CONFIG: Config = {
     veryHigh: 400_000,
   },
   catColor: 'cream',
+  autostart: false,
 };
 
 export type CatState =

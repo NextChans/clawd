@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
@@ -31,6 +32,50 @@ export default function Details() {
     const id = setInterval(() => setFeedLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(id);
   }, [feedLeft > 0]);
+
+  // Login-item autostart. The plugin (the registered LaunchAgent) is the source
+  // of truth, so the switch reflects `isEnabled()` rather than the config flag —
+  // which merely mirrors it and is only rewritten on an explicit toggle (we must
+  // not `patch()` during mount, since that would clobber the still-loading store
+  // config back to defaults). `autostartBusy` guards against double-toggling
+  // while an enable/disable round-trip is in flight.
+  const [autostartOn, setAutostartOn] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    isEnabled()
+      .then((on) => {
+        if (!alive) return;
+        setAutostartOn(on);
+        setAutostartBusy(false);
+      })
+      .catch(() => {
+        if (alive) setAutostartBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const toggleAutostart = async () => {
+    if (autostartBusy) return;
+    const next = !autostartOn;
+    setAutostartBusy(true);
+    try {
+      if (next) await enable();
+      else await disable();
+      const real = await isEnabled();
+      setAutostartOn(real);
+      patch({ autostart: real });
+    } catch {
+      // Registration can fail (e.g. macOS blocks the login item); re-sync to
+      // whatever the OS actually did rather than trusting our optimistic guess.
+      const real = await isEnabled().catch(() => autostartOn);
+      setAutostartOn(real);
+    } finally {
+      setAutostartBusy(false);
+    }
+  };
 
   return (
     <div className="details">
@@ -96,6 +141,21 @@ export default function Details() {
             ))}
           </div>
         </div>
+
+        <label className="d-toggle" title="macOS 로그인 시 clawd를 자동 실행합니다">
+          <span className="d-toggle-label">로그인 시 자동 시작</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autostartOn}
+            aria-label="로그인 시 자동 시작"
+            className={autostartOn ? 'd-switch on' : 'd-switch'}
+            disabled={autostartBusy}
+            onClick={toggleAutostart}
+          >
+            <span className="d-switch-knob" />
+          </button>
+        </label>
 
         <button
           type="button"

@@ -94,7 +94,40 @@
   font: inherit;
   text-align: right;
 }
-.d-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.d-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+.d-toggle-label { font-size: 12px; }
+.d-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+.d-switch.on { background: linear-gradient(180deg, #ffcf6b, #f0a83a); }
+.d-switch:disabled { opacity: 0.55; cursor: default; }
+.d-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s ease;
+}
+.d-switch.on .d-switch-knob { transform: translateX(16px); }
 
 .d-feed {
   align-self: flex-start;
