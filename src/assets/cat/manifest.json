@@ -1,0 +1,28 @@
+{
+  "colors": ["cream", "black", "orange_tabby", "gray_tabby", "white"],
+  "poses": [
+    "sit_forward",
+    "walk_right_a",
+    "walk_right_b",
+    "run_right_a",
+    "run_right_b",
+    "sleep_curled",
+    "alert_arched",
+    "angry_hiss",
+    "exhausted_lie"
+  ],
+  "extras": ["run_stretch_alt"],
+  "available": {
+    "cream": [
+      "sit_forward",
+      "walk_right_a",
+      "walk_right_b",
+      "run_right_a",
+      "run_right_b",
+      "sleep_curled",
+      "alert_arched",
+      "angry_hiss",
+      "exhausted_lie"
+    ]
+  }
+}
