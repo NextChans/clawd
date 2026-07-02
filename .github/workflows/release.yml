@@ -30,14 +30,41 @@ jobs:
 
       - run: npm ci
 
-      - name: Build universal DMG (unsigned)
-        run: npm run tauri build -- --target universal-apple-darwin
+      # Signing is optional and OFF by default (createUpdaterArtifacts is unset in
+      # tauri.conf.json, so local + unsigned CI builds never need a key). Only
+      # when TAURI_SIGNING_PRIVATE_KEY is present do we turn on the signed updater
+      # artifacts (.app.tar.gz + .sig) via --config. Before the key is set up
+      # (scripts/setup-updater-key.sh) the release ships a DMG only, no
+      # auto-update — the app falls back to opening the Releases page.
+      - name: Build universal DMG (+ signed updater artifacts when keyed)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Signing key present — building signed updater artifacts."
+            npm run tauri build -- --target universal-apple-darwin \
+              --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          else
+            echo "No signing key — building unsigned (DMG only, no auto-update)."
+            npm run tauri build -- --target universal-apple-darwin
+          fi
 
-      - name: Publish Release with DMG
+      # No-op (exits 0) when the build was unsigned; writes latest.json otherwise.
+      - name: Generate updater manifest (latest.json)
+        run: node scripts/gen-updater-manifest.mjs
+
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
+          # latest.json / the .app.tar.gz(.sig) only exist for signed builds;
+          # softprops skips missing glob matches, so an unsigned release just
+          # uploads the DMG.
           files: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            latest.json
           draft: false
           prerelease: false
           generate_release_notes: true

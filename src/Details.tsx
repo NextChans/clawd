@@ -7,8 +7,9 @@ import { HourlySparkline } from './components/Charts/HourlySparkline';
 import { WeeklyHeatmap } from './components/Charts/WeeklyHeatmap';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
+import { useUpdater } from './hooks/useUpdater';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
-import { CAT_COLORS, Config } from './types';
+import { CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
 import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
 
@@ -17,6 +18,7 @@ export default function Details() {
   const usage = useUsage();
   const { config, save } = useConfig();
   const { state, reason } = classifyWithReason(usage, config);
+  const updater = useUpdater();
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
@@ -155,6 +157,19 @@ export default function Details() {
           </div>
         </div>
 
+        <label className="d-slider d-scale">
+          <span className="d-slider-label">캐릭터 크기</span>
+          <input
+            type="range"
+            min={CAT_SCALE_MIN}
+            max={CAT_SCALE_MAX}
+            step={0.05}
+            value={config.catScale}
+            onChange={(e) => patch({ catScale: Number(e.target.value) })}
+          />
+          <span className="d-slider-val">{Math.round(config.catScale * 100)}%</span>
+        </label>
+
         <label className="d-toggle" title="macOS 로그인 시 clawd를 자동 실행합니다">
           <span className="d-toggle-label">로그인 시 자동 시작</span>
           <button
@@ -191,10 +206,53 @@ export default function Details() {
           </p>
         </div>
 
+        <UpdateRow updater={updater} />
+
         <p className="d-foot">
           *Claude 팀플랜 flat rate이라 실제 청구액과 무관. 활동성 지표로만 사용
         </p>
       </section>
+    </div>
+  );
+}
+
+/** Self-update control: current version + a check/update button whose label and
+ * action track the {@link useUpdater} status. */
+function UpdateRow({ updater }: { updater: ReturnType<typeof useUpdater> }) {
+  const { status, version, current, progress, check, install } = updater;
+
+  const busy = status === 'checking' || status === 'downloading';
+  let label = '새 버전 확인';
+  if (status === 'checking') label = '확인 중…';
+  else if (status === 'downloading') label = `업데이트 중… ${progress}%`;
+  else if (status === 'available') label = `⬇ v${version}(으)로 업데이트`;
+
+  const onClick = () => {
+    if (busy) return;
+    if (status === 'available') void install();
+    else void check({ silent: false });
+  };
+
+  return (
+    <div className="d-update">
+      <div className="d-update-info">
+        <span className="d-update-cur">현재 버전 v{current || '…'}</span>
+        {status === 'uptodate' && <span className="d-update-msg ok">최신 버전이에요</span>}
+        {status === 'available' && (
+          <span className="d-update-msg hot">새 버전 v{version} 사용 가능</span>
+        )}
+        {status === 'error' && (
+          <span className="d-update-msg warn">확인 실패 · 릴리스 페이지를 열었어요</span>
+        )}
+      </div>
+      <button
+        type="button"
+        className={status === 'available' ? 'd-update-btn hot' : 'd-update-btn'}
+        onClick={onClick}
+        disabled={busy}
+      >
+        {label}
+      </button>
     </div>
   );
 }

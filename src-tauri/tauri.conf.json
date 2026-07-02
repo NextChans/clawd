@@ -51,6 +51,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/NextChans/clawd/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PLACEHOLDER — replace with the PUBLIC KEY from scripts/setup-updater-key.sh"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

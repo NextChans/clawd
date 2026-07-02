@@ -63,10 +63,15 @@
   height: 100%;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
   transition: filter 0.2s ease, transform 0.2s ease;
+  /* User-tunable cat size (details slider → `--cat-scale` on `.stage`). Applied
+     here rather than on `.cat-container`, whose `transform` is owned imperatively
+     for movement. Scales around the sprite's center. */
+  transform: scale(var(--cat-scale, 1));
+  transform-origin: center bottom;
 }
-/* Face the travel direction. */
+/* Face the travel direction (compose the flip with the size scale). */
 .cat-flip.flip {
-  transform: scaleX(-1);
+  transform: scaleX(-1) scale(var(--cat-scale, 1));
 }
 
 /* Grab mode (⌘⇧C): the cat is interactive. Give it a soft glow + a pulsing

@@ -85,6 +85,13 @@ export const CAT_COLORS: { id: CatColor; label: string; swatch: string }[] = [
   { id: 'white', label: '흰둥이', swatch: '#fbf7f1' },
 ];
 
+/** Cat render scale bounds, applied as a CSS `scale()` on the sprite. Kept in
+ * sync with the details-window slider and clamped on load so a hand-edited
+ * store can't blow the cat up past the window. */
+export const CAT_SCALE_MIN = 0.5;
+export const CAT_SCALE_MAX = 2.0;
+export const CAT_SCALE_DEFAULT = 1.0;
+
 export interface Config {
   thresholds: Thresholds;
   catColor: CatColor;
@@ -92,6 +99,9 @@ export interface Config {
    * defaults to `false` so a fresh install never auto-registers. The autostart
    * plugin is the source of truth (`isEnabled()`); this mirrors it for the UI. */
   autostart: boolean;
+  /** Visual size multiplier for the cat sprite (0.5–2.0, default 1.0). Purely
+   * cosmetic — the overlay geometry Rust reasons about stays fixed. */
+  catScale: number;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -103,6 +113,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   catColor: 'cream',
   autostart: false,
+  catScale: CAT_SCALE_DEFAULT,
 };
 
 export type CatState =

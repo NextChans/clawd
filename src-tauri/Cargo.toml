@@ -30,6 +30,10 @@ dirs = "5"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-autostart = "2"
+# Self-update: fetch the signed `latest.json` off GitHub Releases, download and
+# swap in the new `.app`. `process` is used to relaunch after install.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [profile.release]
 panic = "abort"

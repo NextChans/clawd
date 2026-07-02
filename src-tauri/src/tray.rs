@@ -20,14 +20,26 @@ pub struct TrayHandles {
 pub fn build(app: &App) -> tauri::Result<()> {
     let roam_item =
         CheckMenuItem::with_id(app, "mode_roam", "🐾 놀기 (Roam)", true, true, None::<&str>)?;
-    let grab_item =
-        CheckMenuItem::with_id(app, "mode_grab", "🖐️ 잡기 (Grab)", true, false, None::<&str>)?;
+    let grab_item = CheckMenuItem::with_id(
+        app,
+        "mode_grab",
+        "🖐️ 잡기 (Grab)",
+        true,
+        false,
+        None::<&str>,
+    )?;
 
-    let toggle = MenuItem::with_id(app, "toggle_cat", "고양이 숨기기 / 보이기", true, None::<&str>)?;
+    let toggle = MenuItem::with_id(
+        app,
+        "toggle_cat",
+        "고양이 숨기기 / 보이기",
+        true,
+        None::<&str>,
+    )?;
     let reset = MenuItem::with_id(app, "reset_pos", "위치 초기화", true, None::<&str>)?;
+    let move_here = MenuItem::with_id(app, "move_here", "이 화면으로 이동", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "상세 · 설정…", true, None::<&str>)?;
-    let check_update =
-        MenuItem::with_id(app, "check_update", "새 버전 확인…", true, None::<&str>)?;
+    let check_update = MenuItem::with_id(app, "check_update", "새 버전 확인…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "종료 (Quit)", true, None::<&str>)?;
@@ -40,6 +52,7 @@ pub fn build(app: &App) -> tauri::Result<()> {
             &sep1,
             &toggle,
             &reset,
+            &move_here,
             &settings,
             &check_update,
             &sep2,
@@ -68,15 +81,16 @@ pub fn build(app: &App) -> tauri::Result<()> {
                 }
             }
             "reset_pos" => crate::reset_position(app.clone()),
+            "move_here" => crate::move_to_cursor_monitor(app.clone()),
             "settings" => crate::open_details(app.clone()),
             "check_update" => {
-                // The repo is private, so the Releases API 404s without auth.
-                // Simplest reliable path: open the Releases page in the user's
-                // browser, which already carries their GitHub session.
-                use tauri_plugin_opener::OpenerExt;
-                let _ = app
-                    .opener()
-                    .open_url("https://github.com/NextChans/clawd/releases", None::<&str>);
+                // Hand off to the frontend's updater (details window): show the
+                // window and fire the check event. The hook runs `check()` and,
+                // on any failure (e.g. an unsigned release), falls back to
+                // opening the Releases page itself. See `useUpdater.ts`.
+                use tauri::Emitter;
+                crate::open_details(app.clone());
+                let _ = app.emit("clawd://check-update", ());
             }
             "quit" => app.exit(0),
             _ => {}

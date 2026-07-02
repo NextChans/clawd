@@ -20,7 +20,47 @@ to drag, click, or configure it.
    > ^ <     and maps it onto a 7-state cat.
 ```
 
-*(Screenshot placeholder — run it and grab one!)*
+## Screenshots
+
+> _Coming soon._ Drop images into [`docs/screenshots/`](docs/screenshots/) and
+> they'll show up here.
+
+| Roam | Grab | Details |
+|------|------|---------|
+| ![Roam mode — cat wandering](docs/screenshots/roam.png) | ![Grab mode — tooltip + ring](docs/screenshots/grab.png) | ![Details window](docs/screenshots/details.png) |
+
+---
+
+## Features
+
+- **🎨 5 coat colors** — cream · black · orange tabby · gray tabby · white,
+  swappable live from the details window.
+- **🐈 10+ expressive poses** — sit · walk · run · sleep · alert · angry ·
+  exhausted · blink · yawn · stretch · pounce · startled · eating · purr …
+- **🚶 Screen wandering** — animated walk/run gaits, direction flip, eased random
+  walk clamped to the work area.
+- **🛋️ State-driven furniture** — a cushion (sleeping), cat tower (alert/angry),
+  and food bowl (exhausted/feeding) appear on cue; the tower **evolves through
+  three tiers** with daily usage.
+- **🦋 Playthings** — a butterfly, ball, yarn, or bird drifts by and the cat
+  chases (and pounces on) it.
+- **✨ Micro-events** — ear wiggles, look-backs, and hard blinks keep the resting
+  cat alive.
+- **🌙 Time-of-day personality** — winds down and sleeps at night, stretches in
+  the morning.
+- **🖐️ Petting** — hover/hold the cat in Grab mode for a purr.
+- **🍚 Feeding** — a button in the details window sends the cat trotting to its
+  bowl.
+- **🔄 Auto-update** — checks GitHub Releases on launch and one-click installs a
+  signed new build (falls back to opening the Releases page when unsigned).
+- **📏 Adjustable size** — a 50–200% character-size slider.
+- **🖥️ Multi-monitor** — spawns on the display your cursor is on; "이 화면으로
+  이동" re-homes it to the current screen.
+- **🚀 Auto-start** — optional macOS Login Item.
+- **📊 Usage visualization** — model donut, hourly sparkline, weekly heatmap, and
+  a "vs. yesterday" delta.
+- **🔒 Private by design** — no login, no network calls for stats; it parses your
+  local `~/.claude` logs and nothing leaves your machine.
 
 ---
 
@@ -51,8 +91,9 @@ xattr -dr com.apple.quarantine /Applications/clawd.app
 ```
 
 clawd is a **menu-bar app** (no dock icon) — after launch, look for the 🐾/✋
-tray icon. Check for updates any time via **tray → 새 버전 확인…** (opens the
-Releases page in your browser).
+tray icon. It **checks for updates on launch** and via **tray → 새 버전 확인…**;
+when a signed newer build exists you get a one-click update in the details
+window, otherwise it falls back to opening the Releases page in your browser.
 
 ---
 
@@ -180,17 +221,21 @@ for an Option-key hold; that was removed — see the changelog.)
   - **click** → open the details window
 - **⌘⇧C** again (or tray → *🐾 놀기 (Roam)*) → back to Roam; the cat resumes
   wandering from wherever you left it.
-- **Tray menu** → pick Roam / Grab, show/hide the cat, reset position, open
-  details/settings, quit. The tray tooltip and a small menu-bar suffix (`✋`)
-  show which mode you're in.
+- **Tray menu** → pick Roam / Grab, show/hide the cat, reset position, **move to
+  the current screen (이 화면으로 이동)**, open details/settings, check for
+  updates, quit. The tray tooltip and a small menu-bar suffix (`✋`) show which
+  mode you're in.
 
 ## Tuning thresholds
 
-Open the details window (⌘⇧C then click the cat, or tray → *상세 · 임계값 설정*):
+Open the details window (⌘⇧C then click the cat, or tray → *상세 · 설정*):
 
-- **Daily budget (USD)** — default `$20`. Drives the budget ratio and alerts.
-- **Budget alerts** — on/off for the 80% / 100% notifications.
+- **Cat color** — pick one of the five coats.
+- **Character size (캐릭터 크기)** — 50–200% render scale for the cat sprite.
+- **Auto-start (로그인 시 자동 시작)** — register/unregister the macOS Login Item.
 - **State thresholds (tokens/min)** — `curious / active / alert / angry` cutoffs.
+  `exhausted` is entered automatically when the rate stays above the `alert`
+  threshold for a sustained ~30 min window.
 
 Settings persist via the Tauri store (`config.json` in the app config dir) and
 sync live between the cat and details windows.
@@ -254,16 +299,21 @@ clawd/
 │  ├─ hooks/
 │  │  ├─ useUsage.ts         # get_usage + `usage` event subscription
 │  │  ├─ useConfig.ts        # Tauri store config, synced across windows
+│  │  ├─ useUpdater.ts       # self-update (check / download / install)
 │  │  └─ useCatState.ts      # usage → CatState classifier
 │  ├─ components/Cat/        # SVG cat + CSS animations
 │  └─ utils/format.ts
+├─ scripts/
+│  ├─ bump-version.mjs       # sync version across the three manifests
+│  ├─ setup-updater-key.sh   # one-time updater signing-key setup (run manually)
+│  └─ gen-updater-manifest.mjs  # build latest.json from the signed artifacts
 └─ src-tauri/                # Rust backend
    ├─ src/
-   │  ├─ lib.rs              # window setup, Roam/Grab mode, hotkey, poller
+   │  ├─ lib.rs              # window setup, Roam/Grab mode, hotkey, poller, monitors
    │  ├─ roam.rs             # wander scheduler (emits cat-wander events)
    │  ├─ usage.rs            # ccusage-style aggregation
    │  └─ tray.rs             # menu-bar tray (mode radio + status)
-   ├─ tauri.conf.json        # cat + details window config
+   ├─ tauri.conf.json        # cat + details window config + updater endpoint
    └─ capabilities/default.json
 ```
 
@@ -273,10 +323,11 @@ clawd/
   clearly; the other four states are lightweight variations. The walk / run /
   jitter gaits are an initial pass (body bob + alternating paws + tail) — good
   enough to read as motion, but ripe for refinement.
-- **Primary monitor only.** The overlay sizes to the primary monitor's work
-  area; the cat won't wander onto secondary displays yet. Multi-monitor support
-  is a future improvement (track the monitor under the cat and re-home the
-  overlay on display changes).
+- **One monitor at a time.** The overlay spawns on the display your cursor is on
+  and can be re-homed with **tray → 이 화면으로 이동**, but it lives on a single
+  monitor — the cat won't wander across displays simultaneously, and automatic
+  re-homing on display reconfiguration is best-effort (fires on DPI/scale
+  changes).
 - The log scan re-reads all files every 30 s — fine for typical histories, but
   not incremental. Large histories could be cached by mtime later.
 - macOS only. Windows/Linux would need a different global-shortcut strategy.
@@ -284,6 +335,17 @@ clawd/
 
 ## Changelog
 
+- **Unreleased** — **Auto-update, character size, multi-monitor.** The tray
+  "새 버전 확인" and a launch-time check now use Tauri's **updater**: signed
+  `.app.tar.gz` artifacts + a `latest.json` on each Release let the app download
+  and install a new build in place (one click in the details window), with a
+  graceful fallback to opening the Releases page when a build is unsigned. Added
+  a **character-size slider** (50–200%) and **cursor-aware multi-monitor
+  placement** — the overlay spawns on the display under the cursor and a new tray
+  item **이 화면으로 이동** re-homes it. Signing is set up once via
+  `scripts/setup-updater-key.sh`; `scripts/gen-updater-manifest.mjs` and the
+  release workflow produce `latest.json`. **Note:** the updater only kicks in for
+  releases *after* the signing key + pubkey are configured.
 - **v0.5.0** — **Automated DMG releases + in-app update check.** Pushing a
   `v*` tag now builds a **universal (Apple Silicon + Intel) DMG** on GitHub
   Actions and publishes a Release with the DMG attached
@@ -344,14 +406,53 @@ clawd/
   ring for visual feedback.
 - **v0.1.0** — Initial scaffold: floating cat + ccusage integration.
 
-## Roadmap (v2 ideas)
+## Roadmap
 
-- Richer SVG / Lottie animations, more distinct per-state poses.
-- Sounds (meow, hiss) — optional, off by default.
-- Multiple cats (e.g., team usage split across several kitties).
-- Detect Claude usage beyond Claude Code (direct Anthropic API traffic).
-- Incremental log tailing instead of full rescans.
-- Menu-bar mini stats and a sparkline.
+**Done**
+
+- [x] Roam ↔ Grab modes + full-screen click-through overlay
+- [x] Smooth walk/run wandering with direction flip
+- [x] 5 coat colors + PNG sprites (vector fallback)
+- [x] State-driven furniture (cushion / tower / bowl) + tower tier evolution
+- [x] Playthings, micro-events, time-of-day personality
+- [x] Petting + feeding
+- [x] Usage viz — model donut, hourly sparkline, weekly heatmap, yesterday delta
+- [x] Automated universal DMG releases via GitHub Actions
+- [x] In-app **auto-update** with signed artifacts
+- [x] Adjustable character size
+- [x] Cursor-aware **multi-monitor** placement + "이 화면으로 이동"
+- [x] Optional auto-start (Login Item)
+
+**Next up**
+
+- [ ] Wander across **multiple monitors** simultaneously (not just re-home)
+- [ ] Team dashboard — several cats splitting shared usage
+- [ ] A companion **CLI** (`clawd status`) for headless usage
+- [ ] Richer / Lottie animations and more distinct per-state poses
+- [ ] Optional sounds (meow, hiss), off by default
+- [ ] Detect Claude usage beyond Claude Code (direct Anthropic API traffic)
+- [ ] Incremental log tailing instead of full rescans
+- [ ] Windows / Linux support
+
+## Contributing
+
+Fork-and-PR welcome — bug fixes, new poses/colors, and animation polish
+especially.
+
+1. **Fork** and branch off `main`.
+2. Make your change and keep the two gates green:
+   ```sh
+   cargo fmt --manifest-path src-tauri/Cargo.toml   # Rust formatting
+   npm run build                                    # tsc typecheck + vite build
+   ```
+   (a `cargo check` in `src-tauri/` doesn't hurt either).
+3. Match the surrounding style — the code leans on doc comments that explain the
+   *why*; please keep that up for non-obvious logic.
+4. Open a PR with a short description and, for anything visual, a screenshot or
+   clip. New art goes under `src/assets/cat/<color>/` — see that folder's README.
+
+**Issues:** include your macOS version, how you installed (DMG vs. local build),
+and steps to reproduce. Feature ideas are welcome too — check the roadmap first.
 
 ## License
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -451,7 +451,10 @@ export default function App() {
     .join(' ');
 
   return (
-    <div className={grab ? 'stage grab' : 'stage'}>
+    <div
+      className={grab ? 'stage grab' : 'stage'}
+      style={{ '--cat-scale': config.catScale } as CSSProperties}
+    >
       {/* Decorative furniture row (Roam only — the grab window would clip it).
           Rendered before the cat so the cat always sits in front of its props. */}
       {!grab && (

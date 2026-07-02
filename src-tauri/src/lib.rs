@@ -231,7 +231,8 @@ fn feed_cat(app: AppHandle, state: tauri::State<'_, AppState>) -> bool {
                 let (w, h) = wa.logical_size();
                 let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
                 let bx = (0.80 * w - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
-                let by = (h - CAT_SIZE - 6.0).clamp(WANDER_MARGIN, (h - CAT_SIZE).max(WANDER_MARGIN));
+                let by =
+                    (h - CAT_SIZE - 6.0).clamp(WANDER_MARGIN, (h - CAT_SIZE).max(WANDER_MARGIN));
                 let (px, py) = state.cat_pos().unwrap_or((bx, by));
                 let dist = ((bx - px).powi(2) + (by - py).powi(2)).sqrt();
                 let dur = ((dist / 190.0) * 1000.0).clamp(500.0, 3000.0) as u64;
@@ -264,6 +265,25 @@ fn reset_position(app: AppHandle) {
         return;
     };
     let Some(wa) = workarea(&win) else { return };
+    let (x, y) = default_cat_pos(&wa);
+    app.state::<AppState>().set_cat_pos(x, y);
+    let _ = app.emit("cat-place", PlaceEvent { x, y });
+}
+
+/// Move the whole overlay to the monitor the mouse is currently on and park the
+/// cat at that screen's default corner. Forces Roam first (so the overlay is the
+/// full-screen click-through window) before re-fitting it to the cursor monitor.
+#[tauri::command]
+fn move_to_cursor_monitor(app: AppHandle) {
+    apply_mode(&app, false);
+    let Some(win) = app.get_webview_window("cat") else {
+        return;
+    };
+    // Prefer the cursor's monitor; fall back to the window's current one.
+    let Some(wa) = cursor_workarea(&app).or_else(|| workarea(&win)) else {
+        return;
+    };
+    expand_to_workarea(&win, &wa);
     let (x, y) = default_cat_pos(&wa);
     app.state::<AppState>().set_cat_pos(x, y);
     let _ = app.emit("cat-place", PlaceEvent { x, y });
@@ -349,30 +369,55 @@ pub(crate) struct WorkArea {
 impl WorkArea {
     /// Window size in logical (CSS) px — what the frontend sees.
     pub fn logical_size(&self) -> (f64, f64) {
-        (self.phys_w as f64 / self.scale, self.phys_h as f64 / self.scale)
+        (
+            self.phys_w as f64 / self.scale,
+            self.phys_h as f64 / self.scale,
+        )
+    }
+
+    fn from_monitor(monitor: &tauri::Monitor) -> Self {
+        let wa = monitor.work_area();
+        WorkArea {
+            origin_x: wa.position.x,
+            origin_y: wa.position.y,
+            phys_w: wa.size.width,
+            phys_h: wa.size.height,
+            scale: monitor.scale_factor(),
+        }
     }
 }
 
+/// Work area of the monitor the cat window currently sits on (falls back to the
+/// primary). Used once the overlay is placed, so all geometry stays on one
+/// screen.
 pub(crate) fn workarea(win: &WebviewWindow) -> Option<WorkArea> {
     let monitor = win
         .current_monitor()
         .ok()
         .flatten()
         .or_else(|| win.primary_monitor().ok().flatten())?;
-    let wa = monitor.work_area();
-    Some(WorkArea {
-        origin_x: wa.position.x,
-        origin_y: wa.position.y,
-        phys_w: wa.size.width,
-        phys_h: wa.size.height,
-        scale: monitor.scale_factor(),
-    })
+    Some(WorkArea::from_monitor(&monitor))
+}
+
+/// Work area of the monitor under the mouse cursor (falls back to the primary).
+/// Multi-monitor placement: on launch and on "이 화면으로 이동" we drop the
+/// overlay onto whichever screen the user is actually looking at.
+pub(crate) fn cursor_workarea(app: &AppHandle) -> Option<WorkArea> {
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    Some(WorkArea::from_monitor(&monitor))
 }
 
 /// Default resting spot: top-right corner of the work area, inset by the margin.
 pub(crate) fn default_cat_pos(wa: &WorkArea) -> (f64, f64) {
     let (w, _) = wa.logical_size();
-    ((w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN), WANDER_MARGIN)
+    (
+        (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN),
+        WANDER_MARGIN,
+    )
 }
 
 /// Blow the window up to cover the whole work area (Roam overlay).
@@ -421,7 +466,9 @@ fn enter_roam_window(app: &AppHandle, win: &WebviewWindow) {
 /// click-through overlay and resumes wandering. Broadcasts `mode-change`
 /// (`"roam"` / `"grab"`) so the frontend can react, and keeps the tray in sync.
 pub fn apply_mode(app: &AppHandle, grab: bool) {
-    app.state::<AppState>().grabbed.store(grab, Ordering::SeqCst);
+    app.state::<AppState>()
+        .grabbed
+        .store(grab, Ordering::SeqCst);
 
     if grab {
         // Stay click-through for now: the window is still full-screen, so
@@ -445,7 +492,8 @@ fn setup_overlay(app: &AppHandle) {
     let Some(win) = app.get_webview_window("cat") else {
         return;
     };
-    if let Some(wa) = workarea(&win) {
+    // Start on the monitor the cursor is on rather than always the primary.
+    if let Some(wa) = cursor_workarea(app).or_else(|| workarea(&win)) {
         expand_to_workarea(&win, &wa);
         let (x, y) = default_cat_pos(&wa);
         app.state::<AppState>().set_cat_pos(x, y);
@@ -480,6 +528,14 @@ pub fn run() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         use tauri_plugin_window_state::StateFlags;
+
+        // Self-update. `check()` is driven from the frontend (auto on launch +
+        // the tray "새 버전 확인" menu); `process` gives us `relaunch()` after an
+        // install. If the release isn't signed (no key configured yet) `check()`
+        // simply errors and the frontend falls back to opening the Releases page.
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
 
         // The cat window is now a full-screen overlay we size ourselves each
         // launch, so keep the window-state plugin from restoring/persisting its
@@ -526,6 +582,7 @@ pub fn run() {
             open_details,
             hide_details,
             reset_position,
+            move_to_cursor_monitor,
             get_cat_pos,
             enter_grab,
             feed_cat,
@@ -540,6 +597,24 @@ pub fn run() {
             // Cat starts in Roam mode: a full-screen, click-through overlay with
             // the cat parked at its default corner, ready to wander.
             setup_overlay(&handle);
+
+            // Best-effort multi-monitor upkeep: when the cat window's monitor
+            // changes DPI/resolution (e.g. a display is reconfigured or the
+            // window is dragged to a different-density screen), re-fit the
+            // overlay to the new work area so it doesn't end up mis-sized. Only
+            // acts in Roam, where we own the full-screen geometry.
+            if let Some(cat) = app.get_webview_window("cat") {
+                let h = handle.clone();
+                cat.on_window_event(move |event| {
+                    if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
+                        if h.state::<AppState>().is_roam() {
+                            if let Some(win) = h.get_webview_window("cat") {
+                                enter_roam_window(&h, &win);
+                            }
+                        }
+                    }
+                });
+            }
 
             // Keep the details window closed rather than destroyed so it can be
             // reopened instantly from the tray / cat.

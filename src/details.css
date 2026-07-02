@@ -280,6 +280,10 @@
 .d-slider-label { width: 76px; font-size: 11px; }
 .d-slider input { flex: 1; min-width: 0; }
 .d-slider-val { width: 46px; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
+/* The size slider sits in the settings block (not the threshold group) and
+   carries a wider Korean label than the threshold sliders. */
+.d-scale { margin-top: 4px; }
+.d-scale .d-slider-label { width: auto; white-space: nowrap; font-size: 12px; }
 .d-thresholds-note { margin: 8px 0 0; font-size: 10px; line-height: 1.4; opacity: 0.55; }
 
 .d-foot {
@@ -287,4 +291,40 @@
   font-size: 10px;
   line-height: 1.4;
   opacity: 0.5;
+}
+
+/* Self-update row (version + check/update button). */
+.d-update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(128, 128, 128, 0.18);
+}
+.d-update-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.d-update-cur { font-size: 11px; opacity: 0.7; }
+.d-update-msg { font-size: 11px; }
+.d-update-msg.ok { opacity: 0.6; }
+.d-update-msg.hot { color: #e5794b; font-weight: 600; }
+.d-update-msg.warn { color: #d9a441; }
+.d-update-btn {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.1);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.d-update-btn:hover:not(:disabled) { background: rgba(128, 128, 128, 0.18); }
+.d-update-btn:disabled { opacity: 0.5; cursor: default; }
+.d-update-btn.hot {
+  border-color: #e5794b;
+  background: #e5794b;
+  color: #fff;
+  font-weight: 600;
 }

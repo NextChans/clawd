@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { emit, listen } from '@tauri-apps/api/event';
-import { Config, DEFAULT_CONFIG } from '../types';
+import { CAT_SCALE_MAX, CAT_SCALE_MIN, Config, DEFAULT_CONFIG } from '../types';
 
 const STORE_FILE = 'config.json';
 const KEY = 'config';
@@ -21,8 +21,15 @@ function merge(partial: Partial<Config> | undefined | null): Config {
   return {
     catColor: p.catColor ?? DEFAULT_CONFIG.catColor,
     autostart: p.autostart ?? DEFAULT_CONFIG.autostart,
+    catScale: clampScale(p.catScale),
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
   };
+}
+
+/** Clamp a possibly-missing / hand-edited scale into the supported range. */
+function clampScale(v: number | undefined | null): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return DEFAULT_CONFIG.catScale;
+  return Math.min(CAT_SCALE_MAX, Math.max(CAT_SCALE_MIN, v));
 }
 
 /**
