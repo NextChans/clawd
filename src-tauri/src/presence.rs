@@ -376,58 +376,69 @@ async fn run_room(
     }
     let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
-    // Subscribe without blocking on a neighbor: `subscribe_and_join` waits for
-    // the first NeighborUp, which would freeze this whole loop (and the status)
-    // whenever a link can't form. With `subscribe` we're "in the room"
-    // immediately (🟡), broadcast right away, and flip to 🟢 as NeighborUp
-    // events arrive — so the UI distinguishes "waiting" from "not connecting".
-    on_status(false, 0);
-    let (sender, mut receiver) = gossip.subscribe(topic, bootstrap_ids).await?.split();
-    let mut neighbors: usize = 0;
-    on_status(true, neighbors);
-
-    let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
-    loop {
-        if !running.load(Ordering::SeqCst) {
-            break;
-        }
-        tokio::select! {
-            _ = ticker.tick() => {
-                let payload = local.lock().unwrap().clone();
-                if let Some(payload) = payload {
-                    if let Ok(json) = serde_json::to_vec(&payload) {
-                        let _ = sender.broadcast(Bytes::from(json)).await;
-                    }
-                }
+    // Reconnect loop. We use `subscribe` (not `subscribe_and_join`) so we're
+    // "in the room" immediately (🟡), broadcast right away, and flip to 🟢 as
+    // NeighborUp events arrive. If the gossip stream ends — a relay/link hiccup
+    // — we re-subscribe instead of tearing the room down for good; otherwise a
+    // transient drop stops our heartbeats and the peer's cat goes stale and
+    // vanishes ("appeared then disappeared").
+    'outer: while running.load(Ordering::SeqCst) {
+        on_status(false, 0);
+        let sub = match gossip.subscribe(topic, bootstrap_ids.clone()).await {
+            Ok(s) => s,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
             }
-            event = receiver.try_next() => {
-                match event {
-                    Ok(Some(Event::Received(msg))) => {
-                        if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
-                            on_recv(payload);
+        };
+        let (sender, mut receiver) = sub.split();
+        let mut neighbors: usize = 0;
+        on_status(true, neighbors);
+
+        let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
+        loop {
+            if !running.load(Ordering::SeqCst) {
+                break 'outer;
+            }
+            tokio::select! {
+                _ = ticker.tick() => {
+                    let payload = local.lock().unwrap().clone();
+                    if let Some(payload) = payload {
+                        if let Ok(json) = serde_json::to_vec(&payload) {
+                            let _ = sender.broadcast(Bytes::from(json)).await;
                         }
                     }
-                    Ok(Some(Event::NeighborUp(_))) => {
-                        neighbors += 1;
-                        on_status(true, neighbors);
-                        // Greet the new neighbor with our current state at once,
-                        // so their cat shows up without waiting for the next tick.
-                        let payload = local.lock().unwrap().clone();
-                        if let Some(payload) = payload {
-                            if let Ok(json) = serde_json::to_vec(&payload) {
-                                let _ = sender.broadcast(Bytes::from(json)).await;
+                }
+                event = receiver.try_next() => {
+                    match event {
+                        Ok(Some(Event::Received(msg))) => {
+                            if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
+                                on_recv(payload);
                             }
                         }
+                        Ok(Some(Event::NeighborUp(_))) => {
+                            neighbors += 1;
+                            on_status(true, neighbors);
+                            // Greet the new neighbor with our current state at
+                            // once, so their cat shows up without waiting a tick.
+                            let payload = local.lock().unwrap().clone();
+                            if let Some(payload) = payload {
+                                if let Ok(json) = serde_json::to_vec(&payload) {
+                                    let _ = sender.broadcast(Bytes::from(json)).await;
+                                }
+                            }
+                        }
+                        Ok(Some(Event::NeighborDown(_))) => {
+                            neighbors = neighbors.saturating_sub(1);
+                            on_status(true, neighbors);
+                        }
+                        Ok(Some(_)) => {}
+                        Ok(None) | Err(_) => break, // stream ended → re-subscribe
                     }
-                    Ok(Some(Event::NeighborDown(_))) => {
-                        neighbors = neighbors.saturating_sub(1);
-                        on_status(true, neighbors);
-                    }
-                    Ok(Some(_)) => {}
-                    Ok(None) | Err(_) => break,
                 }
             }
         }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     let _ = router.shutdown().await;
