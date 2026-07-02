@@ -47,9 +47,9 @@ const PUBLISH_INTERVAL: Duration = Duration::from_secs(5);
 /// a `stop()`.
 const RECV_TIMEOUT: Duration = Duration::from_secs(2);
 /// A peer we haven't heard from in this long is considered offline and dropped.
-/// Comfortably above [`PUBLISH_INTERVAL`] so a single dropped heartbeat doesn't
-/// blink a cat out.
-const PEER_STALE: Duration = Duration::from_secs(15);
+/// Comfortably above the heartbeat interval so several dropped/late beats don't
+/// blink a cat out — gossip over a relay can jitter, so this is generous.
+const PEER_STALE: Duration = Duration::from_secs(30);
 /// Prune cadence for the stale-peer sweep.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3);
 
@@ -382,6 +382,14 @@ async fn run_room(
                     Ok(Some(Event::NeighborUp(_))) => {
                         neighbors += 1;
                         on_status(true, neighbors);
+                        // Greet the new neighbor with our current state at once,
+                        // so their cat shows up without waiting for the next tick.
+                        let payload = local.lock().unwrap().clone();
+                        if let Some(payload) = payload {
+                            if let Ok(json) = serde_json::to_vec(&payload) {
+                                let _ = sender.broadcast(Bytes::from(json)).await;
+                            }
+                        }
                     }
                     Ok(Some(Event::NeighborDown(_))) => {
                         neighbors = neighbors.saturating_sub(1);
