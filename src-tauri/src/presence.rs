@@ -47,9 +47,9 @@ const PUBLISH_INTERVAL: Duration = Duration::from_secs(5);
 /// a `stop()`.
 const RECV_TIMEOUT: Duration = Duration::from_secs(2);
 /// A peer we haven't heard from in this long is considered offline and dropped.
-/// Comfortably above [`PUBLISH_INTERVAL`] so a single dropped heartbeat doesn't
-/// blink a cat out.
-const PEER_STALE: Duration = Duration::from_secs(15);
+/// Comfortably above the heartbeat interval so several dropped/late beats don't
+/// blink a cat out — gossip over a relay can jitter, so this is generous.
+const PEER_STALE: Duration = Duration::from_secs(30);
 /// Prune cadence for the stale-peer sweep.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3);
 
@@ -314,9 +314,14 @@ async fn run_room(
     on_room: OnRoom,
     on_status: OnStatus,
 ) -> anyhow::Result<()> {
+    // `discovery_n0` publishes our NodeId → address (incl. relay) to n0's DNS
+    // and resolves peers the same way, so a joiner can reach the host across
+    // different networks even if the shared ticket's addresses are LAN-only.
+    // Without it, cross-network rooms only linked up on the same LAN.
     let endpoint = Endpoint::builder()
         .secret_key(secret)
         .relay_mode(RelayMode::Default)
+        .discovery_n0()
         .bind()
         .await?;
     let gossip = Gossip::builder().spawn(endpoint.clone());
@@ -343,10 +348,13 @@ async fn run_room(
     }
     let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
-    // Connecting → the join future resolves once we're subscribed (the opener
-    // resolves immediately; a joiner waits until it links to a bootstrap peer).
+    // Subscribe without blocking on a neighbor: `subscribe_and_join` waits for
+    // the first NeighborUp, which would freeze this whole loop (and the status)
+    // whenever a link can't form. With `subscribe` we're "in the room"
+    // immediately (🟡), broadcast right away, and flip to 🟢 as NeighborUp
+    // events arrive — so the UI distinguishes "waiting" from "not connecting".
     on_status(false, 0);
-    let (sender, mut receiver) = gossip.subscribe_and_join(topic, bootstrap_ids).await?.split();
+    let (sender, mut receiver) = gossip.subscribe(topic, bootstrap_ids).await?.split();
     let mut neighbors: usize = 0;
     on_status(true, neighbors);
 
@@ -374,6 +382,14 @@ async fn run_room(
                     Ok(Some(Event::NeighborUp(_))) => {
                         neighbors += 1;
                         on_status(true, neighbors);
+                        // Greet the new neighbor with our current state at once,
+                        // so their cat shows up without waiting for the next tick.
+                        let payload = local.lock().unwrap().clone();
+                        if let Some(payload) = payload {
+                            if let Ok(json) = serde_json::to_vec(&payload) {
+                                let _ = sender.broadcast(Bytes::from(json)).await;
+                            }
+                        }
                     }
                     Ok(Some(Event::NeighborDown(_))) => {
                         neighbors = neighbors.saturating_sub(1);
