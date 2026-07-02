@@ -343,10 +343,13 @@ async fn run_room(
     }
     let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
-    // Connecting → the join future resolves once we're subscribed (the opener
-    // resolves immediately; a joiner waits until it links to a bootstrap peer).
+    // Subscribe without blocking on a neighbor: `subscribe_and_join` waits for
+    // the first NeighborUp, which would freeze this whole loop (and the status)
+    // whenever a link can't form. With `subscribe` we're "in the room"
+    // immediately (🟡), broadcast right away, and flip to 🟢 as NeighborUp
+    // events arrive — so the UI distinguishes "waiting" from "not connecting".
     on_status(false, 0);
-    let (sender, mut receiver) = gossip.subscribe_and_join(topic, bootstrap_ids).await?.split();
+    let (sender, mut receiver) = gossip.subscribe(topic, bootstrap_ids).await?.split();
     let mut neighbors: usize = 0;
     on_status(true, neighbors);
 
