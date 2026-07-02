@@ -5,8 +5,9 @@
 A tiny, frameless, always-on-top cat that lives on your desktop and changes its
 mood based on how hard you're driving Claude Code. Low activity → it naps and
 plays. Burning tokens → it gets alert, then hisses. Near your daily budget →
-it's exhausted. It never gets in your way: the window is **click-through** until
-you toggle grab mode with **⌘⇧C**.
+it's exhausted. By default it **roams** — clicks pass straight through and the
+cat wanders your screen on its own — until you **grab** it (**⌘⇧C** or the tray)
+to drag, click, or configure it.
 
 ```
    /\_/\     clawd watches ~/.claude/projects/**/*.jsonl,
@@ -22,10 +23,19 @@ you toggle grab mode with **⌘⇧C**.
 
 - **Floating, no chrome** — transparent background, no title bar, no shadow.
 - **Mood = usage** — the cat animates by token rate and daily budget ratio.
-- **Zero interference** — mouse events pass straight through to the window
-  behind it. Press **⌘⇧C** to toggle "grab" mode (hover for stats, drag to
-  move, click for details); press it again to go back to click-through. A
-  glowing ring shows when grab mode is on.
+- **Two modes — Roam ↔ Grab:**
+  - **🐾 Roam** (default) — the window is **click-through** (mouse events pass to
+    whatever's behind it) and the cat **wanders the screen on its own**. It never
+    gets in your way.
+  - **🖐️ Grab** — the cat becomes interactive and holds still: hover for stats,
+    drag to move it, click to open details. A glowing ring marks Grab mode.
+  - Toggle with **⌘⇧C** or the tray. Roam ↔ Grab flips instantly; a short badge
+    confirms the switch.
+- **Screen wandering** — in Roam mode the cat strolls between random nearby spots
+  with smooth easing, clamped to the active monitor's work area (never behind the
+  menu bar or dock). How lively it wanders tracks its mood: `playing` bounces
+  around, `angry` fidgets in place, `exhausted` barely twitches, `sleeping`
+  stays put.
 - **Menu-bar app** — no dock icon; control it from the tray.
 
 ## Cat states
@@ -74,21 +84,25 @@ The signed/bundled `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
 - **Notifications** — for the 80% / 100% daily-budget alerts. Allow when
   prompted (toggle alerts off in the details window if you don't want them).
 
-That's it — the **⌘⇧C** grab-mode hotkey uses Tauri's global-shortcut plugin
-and needs **no Accessibility permission**. (Earlier builds used an `rdev`
-keyboard monitor for an Option-key hold; that was removed — see the changelog.)
+That's it — the **⌘⇧C** hotkey uses Tauri's global-shortcut plugin and needs
+**no Accessibility permission**. (Earlier builds used an `rdev` keyboard monitor
+for an Option-key hold; that was removed — see the changelog.)
 
 ## Usage
 
-- Default → the cat is **click-through**: mouse events pass to the window behind
-  it, so it never gets in your way.
-- **⌘⇧C** → toggle **grab mode** on. A glowing ring appears and the cat becomes
-  interactive:
+- **🐾 Roam mode (default)** → the cat is **click-through** (mouse events pass to
+  the window behind it) and **wanders the screen on its own**. It never gets in
+  your way.
+- **⌘⇧C** (or tray → *🖐️ 잡기 (Grab)*) → switch to **Grab mode**. Wandering stops,
+  a glowing ring appears, and the cat becomes interactive:
   - **hover** → tooltip with today's tokens / cost / rate
   - **drag** → move the cat (position is remembered across launches)
   - **click** → open the details window
-- **⌘⇧C** again → grab mode off, back to click-through.
-- **Tray menu** → show/hide the cat, reset position, open details/settings, quit.
+- **⌘⇧C** again (or tray → *🐾 놀기 (Roam)*) → back to Roam; the cat resumes
+  wandering from wherever you left it.
+- **Tray menu** → pick Roam / Grab, show/hide the cat, reset position, open
+  details/settings, quit. The tray tooltip and a small menu-bar suffix (`✋`)
+  show which mode you're in.
 
 ## Tuning thresholds
 
@@ -148,9 +162,10 @@ clawd/
 │  └─ utils/format.ts
 └─ src-tauri/                # Rust backend
    ├─ src/
-   │  ├─ lib.rs              # window setup, click-through, hotkey, poller
+   │  ├─ lib.rs              # window setup, Roam/Grab mode, hotkey, poller
+   │  ├─ roam.rs             # screen-wander animation loop
    │  ├─ usage.rs            # ccusage-style aggregation
-   │  └─ tray.rs             # menu-bar tray
+   │  └─ tray.rs             # menu-bar tray (mode radio + status)
    ├─ tauri.conf.json        # cat + details window config
    └─ capabilities/default.json
 ```
@@ -166,6 +181,14 @@ clawd/
 
 ## Changelog
 
+- **v0.2.0** — **Roam ↔ Grab modes + screen wandering.** Replaced the old
+  "pin" concept with two clear states: **Roam** (default — click-through and the
+  cat auto-wanders the screen) and **Grab** (interactive and frozen for
+  drag/click/settings). Wandering is a smooth eased random walk clamped to the
+  active monitor's work area, with liveliness driven by the cat's mood (`roam.rs`).
+  Toggle via **⌘⇧C** or the redesigned tray (Roam/Grab radio + status suffix).
+  Also: widened the cat window (240×210) and re-anchored the tooltip inside it so
+  stats no longer clip, added mode-switch badges, and a first-run hint.
 - **v0.1.1** — Removed the `rdev` global keyboard monitor. It called macOS
   Text Services (`TSMGetInputSourceProperty`) off the main thread, which
   tripped `dispatch_assert_queue` and crashed the app (`SIGTRAP`) whenever a

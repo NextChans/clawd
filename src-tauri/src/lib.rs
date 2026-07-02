@@ -1,9 +1,11 @@
 //! clawd — a floating cat that reflects Claude Code usage.
 //!
 //! The Rust side owns everything the WebView can't do well: reading the
-//! `~/.claude` session logs, keeping the cat window click-through until the
-//! ⌘⇧C grab hotkey flips it interactive, the tray, and native notifications.
+//! `~/.claude` session logs, the two interaction modes — **Roam** (click-through
+//! + auto-wander) and **Grab** (interactive, frozen) — the wander animation, the
+//! tray, and native notifications.
 
+mod roam;
 mod tray;
 mod usage;
 
@@ -22,15 +24,19 @@ const DEFAULT_DAILY_BUDGET: f64 = 20.0;
 /// How often we rescan the logs and push a fresh snapshot to the frontend.
 const POLL_SECS: u64 = 30;
 
-/// The global hotkey that toggles "grab" mode: the cat becomes interactive
-/// (mouse events captured) so you can drag or click it, then passes events
-/// through again when toggled off.
-const PIN_SHORTCUT: &str = "cmd+shift+c";
+/// The global hotkey that toggles between Roam and Grab mode.
+const GRAB_SHORTCUT: &str = "cmd+shift+c";
+
+/// The cat's default mood before the frontend reports one. Drives the wander
+/// cadence in Roam mode; see `roam::params`.
+const DEFAULT_CAT_STATE: &str = "playing";
 
 pub struct AppState {
-    /// When grabbed (⌘⇧C), the cat captures the mouse instead of passing
-    /// events through. Named `pinned` for backward compat with the store.
-    pinned: AtomicBool,
+    /// `false` = **Roam** (click-through, auto-wander), `true` = **Grab** (the
+    /// cat captures the mouse for drag/click and holds still).
+    grabbed: AtomicBool,
+    /// Latest `CatState` the frontend reported, used to tune the wander.
+    cat_state: Mutex<String>,
     /// Daily budget in USD, and whether budget notifications fire.
     daily_budget: Mutex<f64>,
     notify_enabled: AtomicBool,
@@ -44,13 +50,26 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            pinned: AtomicBool::new(false),
+            grabbed: AtomicBool::new(false),
+            cat_state: Mutex::new(DEFAULT_CAT_STATE.to_string()),
             daily_budget: Mutex::new(DEFAULT_DAILY_BUDGET),
             notify_enabled: AtomicBool::new(true),
             notified_day: Mutex::new(String::new()),
             notified_80: AtomicBool::new(false),
             notified_100: AtomicBool::new(false),
         }
+    }
+}
+
+impl AppState {
+    /// True when in Roam mode (click-through + wandering).
+    fn is_roam(&self) -> bool {
+        !self.grabbed.load(Ordering::SeqCst)
+    }
+
+    /// A snapshot of the last reported cat mood.
+    fn cat_state(&self) -> String {
+        self.cat_state.lock().unwrap().clone()
     }
 }
 
@@ -66,15 +85,28 @@ async fn get_usage() -> Usage {
         .unwrap_or_default()
 }
 
-/// Pin / unpin interactive mode (mouse capture without holding Option).
+/// Switch mode: `grab = true` → Grab (interactive, frozen), `false` → Roam
+/// (click-through, wandering).
 #[tauri::command]
-fn set_pinned(app: AppHandle, pinned: bool) {
-    set_grab(&app, pinned);
+fn set_mode(app: AppHandle, grab: bool) {
+    apply_mode(&app, grab);
 }
 
+/// Current mode as `"roam"` / `"grab"` for the frontend to sync against.
 #[tauri::command]
-fn get_pinned(state: tauri::State<'_, AppState>) -> bool {
-    state.pinned.load(Ordering::SeqCst)
+fn get_mode(state: tauri::State<'_, AppState>) -> String {
+    if state.grabbed.load(Ordering::SeqCst) {
+        "grab".into()
+    } else {
+        "roam".into()
+    }
+}
+
+/// The frontend reports the cat's current mood so Roam mode can tune how
+/// lively the wander is (see `roam::params`).
+#[tauri::command]
+fn set_cat_state(state: tauri::State<'_, AppState>, cat_state: String) {
+    *state.cat_state.lock().unwrap() = cat_state;
 }
 
 /// Persist the two knobs the Rust side cares about (budget + notifications).
@@ -124,14 +156,16 @@ fn apply_ignore_cursor(app: &AppHandle, ignore: bool) {
     }
 }
 
-/// Toggle "grab" mode: when grabbed the cat captures the mouse (drag/click),
-/// otherwise events pass straight through. Also broadcasts a `grab-mode` event
-/// so the frontend can show its glowing-ring feedback and stay in sync.
-fn set_grab(app: &AppHandle, grabbed: bool) {
+/// Apply a mode. Grab captures the mouse (drag/click) and the wander loop
+/// freezes; Roam passes events through and resumes wandering. Broadcasts a
+/// `mode-change` event (`"roam"` / `"grab"`) so the frontend can show its
+/// feedback, and keeps the tray in sync.
+pub fn apply_mode(app: &AppHandle, grab: bool) {
     let state = app.state::<AppState>();
-    state.pinned.store(grabbed, Ordering::SeqCst);
-    apply_ignore_cursor(app, !grabbed);
-    let _ = app.emit("grab-mode", grabbed);
+    state.grabbed.store(grab, Ordering::SeqCst);
+    apply_ignore_cursor(app, !grab);
+    let _ = app.emit("mode-change", if grab { "grab" } else { "roam" });
+    tray::update_mode(app, grab);
 }
 
 /// Park the cat near the top-right of the primary monitor with a small inset.
@@ -143,7 +177,7 @@ fn place_top_right(app: &AppHandle) {
         let screen = monitor.size();
         let win = window
             .outer_size()
-            .unwrap_or(tauri::PhysicalSize::new(160, 160));
+            .unwrap_or(tauri::PhysicalSize::new(240, 210));
         let inset = (24.0 * monitor.scale_factor()) as i32;
         let x = screen.width as i32 - win.width as i32 - inset;
         let y = inset;
@@ -253,16 +287,16 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
         builder = builder.plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts([PIN_SHORTCUT])
-                .expect("valid pin shortcut")
+                .with_shortcuts([GRAB_SHORTCUT])
+                .expect("valid grab shortcut")
                 .with_handler(|app, _shortcut, event| {
                     use tauri_plugin_global_shortcut::ShortcutState;
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
-                    let state = app.state::<AppState>();
-                    let now = !state.pinned.load(Ordering::SeqCst);
-                    set_grab(app, now);
+                    // Toggle Roam <-> Grab.
+                    let grabbed = app.state::<AppState>().grabbed.load(Ordering::SeqCst);
+                    apply_mode(app, !grabbed);
                 })
                 .build(),
         );
@@ -271,8 +305,9 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             get_usage,
-            set_pinned,
-            get_pinned,
+            set_mode,
+            get_mode,
+            set_cat_state,
             set_config,
             start_drag,
             open_details,
@@ -286,7 +321,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Cat starts fully click-through.
+            // Cat starts in Roam mode: fully click-through and wandering.
             apply_ignore_cursor(&handle, true);
             place_on_first_run(&handle);
 
@@ -303,7 +338,10 @@ pub fn run() {
             }
 
             tray::build(app)?;
-            spawn_poller(handle);
+            // Reflect the initial mode (Roam) in the freshly-built tray.
+            tray::update_mode(&handle, false);
+            spawn_poller(handle.clone());
+            roam::spawn(handle);
             Ok(())
         })
         .run(tauri::generate_context!())
