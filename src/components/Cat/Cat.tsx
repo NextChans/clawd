@@ -1,8 +1,13 @@
+import { useEffect, useState } from 'react';
 import { CatColor, CatState } from '../../types';
 import { CatSvg, type Gait } from './CatSvg';
 import './cat.css';
 
 export type { Gait };
+
+// Per-frame dwell time (ms) for the walk/run flip. Half the old CSS cycle
+// (0.5s walk / 0.3s run) so the visible cadence matches the previous version.
+const FRAME_MS = { walk: 250, run: 150 } as const;
 
 /**
  * The cat renderer. Prefers generated **PNG sprites** dropped into
@@ -11,9 +16,11 @@ export type { Gait };
  * before the art arrives and degrades gracefully if a file is missing.
  *
  * Poses map 1:1 to CatSvg's postures (so the fallback shows the *same* pose):
- * walking/running use a two-frame flip (`*_a` / `*_b`) animated by opacity;
- * everything else is a single still. The container flips via `scaleX(-1)` from
- * App.tsx when the cat heads left, so sprites are authored facing **right**.
+ * walking/running flip between two frames (`*_a` / `*_b`) by swapping the *only*
+ * rendered `<img>` on a timer — never stacking both, so the frames can't bleed
+ * through each other's transparent regions. Everything else is a single still.
+ * The container flips via `scaleX(-1)` from App.tsx when the cat heads left, so
+ * sprites are authored facing **right**.
  */
 export function Cat({
   state,
@@ -27,25 +34,43 @@ export function Cat({
   const poses = posesFor(state, gait);
   const frames = Array.isArray(poses) ? poses : [poses];
   const urls = frames.map((p) => spriteUrl(color, p));
+  const twoFrame = urls.length === 2;
+
+  // Which of the two frames is currently shown. Only meaningful when twoFrame.
+  const [frameIdx, setFrameIdx] = useState(0);
+
+  // Drive the flip with a timer that renders one frame at a time. Reset to
+  // frame 0 and (re)arm whenever the animation identity changes so switching
+  // walk→run (or leaving a moving state) starts clean; the cleanup clears the
+  // interval on every change/unmount, so React strict-mode's double invoke
+  // and later state changes never leave a stray timer running.
+  const dur = twoFrame ? (gait === 'run' ? FRAME_MS.run : FRAME_MS.walk) : 0;
+  const [a, b] = urls;
+  useEffect(() => {
+    if (!twoFrame) return;
+    setFrameIdx(0);
+    // Preload both frames so the first swap doesn't flash an unpainted image.
+    [a, b].forEach((u) => {
+      if (u) {
+        const img = new Image();
+        img.src = u;
+      }
+    });
+    // Honor reduced-motion: hold on a single frame, no timer.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const id = setInterval(() => setFrameIdx((i) => 1 - i), dur);
+    return () => clearInterval(id);
+  }, [twoFrame, dur, a, b]);
 
   // Any missing frame → render the vector cat instead (keeps the same pose).
   if (urls.some((u) => !u)) {
     return <CatSvg state={state} gait={gait} color={color} />;
   }
 
-  if (urls.length === 2) {
-    const speed = gait === 'run' ? 'speed-fast' : 'speed-walk';
-    return (
-      <div className={`cat-img two-frame ${speed}`} role="img" aria-label={`cat: ${state}`}>
-        <img className="frame frame-a" src={urls[0]} alt="" draggable={false} />
-        <img className="frame frame-b" src={urls[1]} alt="" draggable={false} />
-      </div>
-    );
-  }
-
+  const src = twoFrame ? urls[frameIdx] : urls[0];
   return (
     <div className="cat-img" role="img" aria-label={`cat: ${state}`}>
-      <img className="frame" src={urls[0]} alt="" draggable={false} />
+      <img className="frame" src={src} alt="" draggable={false} />
     </div>
   );
 }
