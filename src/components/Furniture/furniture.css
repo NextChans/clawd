@@ -1,0 +1,38 @@
+/* Decorative furniture row along the bottom of the full-screen overlay. Sits
+   *behind* the cat (earlier in DOM, no z-index) and never catches the mouse, so
+   the click-through overlay behaves exactly as before. Only shown in Roam mode;
+   the shrunken Grab window would clip these off-screen. */
+.furniture-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 160px;
+  pointer-events: none;
+}
+
+/* Each prop is centered on its baseline fraction (tower 20% / cushion 50% /
+   bowl 80% — must match `FURNITURE_X` and `roam.rs`'s `anchor_pos`). Slightly
+   larger than the 128px cat so the cat reads as sitting *on* it. `contain` keeps
+   the wide double-bowl from stretching. */
+.furniture {
+  position: absolute;
+  bottom: 10px;
+  width: 148px;
+  height: 132px;
+  object-fit: contain;
+  object-position: center bottom;
+  transform: translateX(-50%);
+  pointer-events: none;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.22));
+}
+
+.furniture-tower {
+  left: 20%;
+}
+.furniture-cushion {
+  left: 50%;
+}
+.furniture-bowl {
+  left: 80%;
+}

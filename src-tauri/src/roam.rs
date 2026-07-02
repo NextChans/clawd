@@ -26,6 +26,37 @@ const TICK_MS: u64 = 200;
 /// doesn't lurch the instant it's placed or released.
 const GRACE: Duration = Duration::from_millis(1500);
 
+/// Cat's resting line: how far its top-left sits above the work-area bottom when
+/// parked at a ground-level prop (cushion / bowl). Chosen so the 128px cat
+/// overlaps the prop art (drawn ~132px tall, 10px off the bottom in CSS).
+const FURN_GROUND: f64 = 6.0;
+
+/// Extra lift so an alert / angry cat perches up on the cat-tower platform
+/// rather than at floor level.
+const TOWER_LIFT: f64 = 54.0;
+
+/// Once within this many logical px of a prop, the cat is "there": it settles
+/// (or fidgets, if angry) instead of hopping again.
+const ANCHOR_SNAP: f64 = 24.0;
+
+/// Furniture anchor for a mood, as the cat container's target top-left (logical
+/// px), or `None` for free roam. The x-fractions match `FURNITURE_X` in the
+/// frontend (tower 0.20 / cushion 0.50 / bowl 0.80) so the cat lands on its
+/// prop; `h`/`w` are the work-area logical size.
+///  - `sleeping`         → curl up on the cushion (center).
+///  - `alert` / `angry`  → perch on the cat-tower platform (left, lifted).
+///  - `exhausted`        → slump by the food bowl (right).
+fn anchor_pos(state: &str, w: f64, h: f64) -> Option<(f64, f64)> {
+    let ground_y = h - CAT_SIZE - FURN_GROUND;
+    let center = |frac: f64| frac * w - CAT_SIZE / 2.0;
+    match state {
+        "sleeping" => Some((center(0.50), ground_y)),
+        "alert" | "angry" => Some((center(0.20), ground_y - TOWER_LIFT)),
+        "exhausted" => Some((center(0.80), ground_y)),
+        _ => None,
+    }
+}
+
 /// A tiny self-contained xorshift PRNG — avoids pulling in the `rand` crate.
 struct Rng(u64);
 
@@ -178,11 +209,7 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
         _ => {}
     }
 
-    let Some(p) = params(&state.cat_state()) else {
-        // Sleeping: check back shortly.
-        *next_hop = Some(now + Duration::from_secs(2));
-        return;
-    };
+    let cat_state = state.cat_state();
 
     let Some(wa) = crate::workarea(&win) else {
         return;
@@ -192,6 +219,70 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
     let max_y = (h_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
 
     let (px, py) = state.cat_pos().unwrap_or_else(|| crate::default_cat_pos(&wa));
+
+    // Mood-anchored props: some moods send the cat to a specific piece of
+    // furniture instead of free roaming. Ground props can sit lower than the
+    // usual wander margin (the baseline is inside the work area), so `ay` clamps
+    // against the screen bottom, not `max_y`.
+    if let Some((ax, ay)) = anchor_pos(&cat_state, w_log, h_log) {
+        let ax = ax.clamp(WANDER_MARGIN, max_x);
+        let ay = ay.clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+        let dist = ((ax - px).powi(2) + (ay - py).powi(2)).sqrt();
+
+        if dist > ANCHOR_SNAP {
+            // Head to the prop; travel time scales with distance and mood pace.
+            let (gait, speed) = match cat_state.as_str() {
+                "angry" => ("run", 520.0),
+                "exhausted" => ("walk", 70.0),
+                _ => ("walk", 190.0),
+            };
+            let dur_ms = ((dist / speed) * 1000.0).clamp(500.0, 4500.0) as u64;
+            let direction = if ax < px { "left" } else { "right" };
+            let _ = app.emit(
+                "cat-wander",
+                WanderEvent {
+                    x: ax,
+                    y: ay,
+                    duration_ms: dur_ms,
+                    direction: direction.to_string(),
+                    gait: gait.to_string(),
+                },
+            );
+            state.set_cat_pos(ax, ay);
+            *next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_millis(400));
+            return;
+        }
+
+        // Arrived. Angry keeps fidgeting in place; the other anchored moods
+        // settle and hold (the frontend then shows the resting pose by mood).
+        if cat_state == "angry" {
+            let tx = (ax + rng.range(-16.0, 16.0)).clamp(WANDER_MARGIN, max_x);
+            let ty = (ay + rng.range(-10.0, 10.0)).clamp(WANDER_MARGIN, max_y);
+            let dur_ms = rng.range(150.0, 320.0) as u64;
+            let _ = app.emit(
+                "cat-wander",
+                WanderEvent {
+                    x: tx,
+                    y: ty,
+                    duration_ms: dur_ms,
+                    direction: "right".to_string(),
+                    gait: "jitter".to_string(),
+                },
+            );
+            state.set_cat_pos(tx, ty);
+            *next_hop =
+                Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(0.4, 1.1)));
+        } else {
+            *next_hop = Some(now + Duration::from_secs(2));
+        }
+        return;
+    }
+
+    // Free roam (playing / curious / active / unknown).
+    let Some(p) = params(&cat_state) else {
+        *next_hop = Some(now + Duration::from_secs(2));
+        return;
+    };
 
     // Pick a target: a directed hop, or a small in-place twitch (angry).
     let (tx, ty) = if p.jitter {

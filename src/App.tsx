@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Cat } from './components/Cat/Cat';
+import { FurnitureBaseline } from './components/Furniture/Furniture';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
@@ -227,6 +228,10 @@ export default function App() {
 
   return (
     <div className={grab ? 'stage grab' : 'stage'}>
+      {/* Decorative furniture row (Roam only — the grab window would clip it).
+          Rendered before the cat so the cat always sits in front of its props. */}
+      {!grab && <FurnitureBaseline color={config.catColor} />}
+
       <div
         ref={containerRef}
         className={placed ? 'cat-container placed' : 'cat-container'}

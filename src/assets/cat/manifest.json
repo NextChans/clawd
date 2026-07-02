@@ -68,5 +68,17 @@
       "angry_hiss",
       "exhausted_lie"
     ]
+  },
+  "furniture": {
+    "kinds": ["tower", "cushion", "bowl"],
+    "note": "tower=T2 Platform, cushion=C3 Cave, bowl=B3 Double. bowl authored only for gray_tabby; other colors fall back to gray_tabby/bowl.png in code. cream has no furniture sheet (props omitted).",
+    "path": "src/assets/furniture/<color>/<kind>.png",
+    "available": {
+      "black": ["tower", "cushion"],
+      "orange_tabby": ["tower", "cushion"],
+      "gray_tabby": ["tower", "cushion", "bowl"],
+      "white": ["tower", "cushion"],
+      "cream": []
+    }
   }
 }
