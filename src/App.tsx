@@ -8,7 +8,7 @@ import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { CatState } from './types';
-import { formatCost, formatRate, formatTokens } from './utils/format';
+import { formatRate, formatTokens } from './utils/format';
 import './App.css';
 
 type Mode = 'roam' | 'grab';
@@ -379,8 +379,6 @@ export default function App() {
     setHover(true);
   };
 
-  const dailyRatio = config.dailyBudget > 0 ? usage.today_cost / config.dailyBudget : 0;
-
   // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
   // to a content sit for the reaction window. Otherwise show the real mood.
   const effectiveState: CatState =
@@ -541,11 +539,9 @@ export default function App() {
               transition={{ duration: 0.15 }}
             >
               <div className="tt-title">{STATE_LABEL[state]}</div>
-              <div className="tt-row">
-                오늘 {formatTokens(usage.today_tokens)} · {formatCost(usage.today_cost)}
-              </div>
+              <div className="tt-row">오늘 {formatTokens(usage.today_tokens)} tokens</div>
               <div className="tt-row dim">
-                rate {formatRate(usage.rate_per_min)} · 예산 {Math.round(dailyRatio * 100)}%
+                rate {formatRate(usage.rate_per_min)} · 오늘 {formatTokens(usage.today_tokens)}
               </div>
               <div className="tt-row dim">이유: {reason}</div>
             </motion.div>

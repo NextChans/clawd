@@ -65,15 +65,16 @@ export const CAT_COLORS: { id: CatColor; label: string; swatch: string }[] = [
 ];
 
 export interface Config {
-  dailyBudget: number; // USD
-  notifyEnabled: boolean;
+  /** Daily cumulative-token ceiling above which a busy cat reads as `exhausted`
+   * (tokens). This is an *activity* signal, not a bill — the user is on a
+   * Claude Team flat-rate plan, so there is no per-token cost to cap. */
+  exhaustedTokenThreshold: number;
   thresholds: Thresholds;
   catColor: CatColor;
 }
 
 export const DEFAULT_CONFIG: Config = {
-  dailyBudget: 20,
-  notifyEnabled: true,
+  exhaustedTokenThreshold: 50_000_000,
   thresholds: {
     low: 10_000,
     mid: 50_000,

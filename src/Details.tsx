@@ -5,7 +5,7 @@ import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { CAT_COLORS, Config } from './types';
-import { formatCost, formatIdle, formatRate, formatTokens } from './utils/format';
+import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
 
 /** The Option+click / tray "settings" popup: usage summary + tunable knobs. */
@@ -32,8 +32,6 @@ export default function Details() {
     return () => clearInterval(id);
   }, [feedLeft > 0]);
 
-  const dailyRatio = config.dailyBudget > 0 ? usage.today_cost / config.dailyBudget : 0;
-
   return (
     <div className="details">
       <header className="d-head">
@@ -57,23 +55,13 @@ export default function Details() {
       {usage.error && <div className="d-error">⚠ {usage.error}</div>}
 
       <section className="d-cards">
-        <Stat label="오늘" tokens={usage.today_tokens} cost={usage.today_cost} />
-        <Stat label="이번 주" tokens={usage.week_tokens} cost={usage.week_cost} />
-        <Stat label="이번 달" tokens={usage.month_tokens} cost={usage.month_cost} />
+        <Stat label="오늘" tokens={usage.today_tokens} />
+        <Stat label="이번 주" tokens={usage.week_tokens} />
+        <Stat label="이번 달" tokens={usage.month_tokens} />
       </section>
 
-      <div className="d-budget">
-        <div className="d-budget-bar">
-          <div
-            className="d-budget-fill"
-            style={{ width: `${Math.min(100, dailyRatio * 100)}%` }}
-            data-over={dailyRatio >= 1}
-          />
-        </div>
-        <div className="d-budget-label">
-          예산 {formatCost(usage.today_cost)} / {formatCost(config.dailyBudget)} ·{' '}
-          {Math.round(dailyRatio * 100)}% · rate {formatRate(usage.rate_per_min)}
-        </div>
+      <div className="d-activity">
+        rate {formatRate(usage.rate_per_min)} · 오늘 {formatTokens(usage.today_tokens)}
       </div>
 
       {usage.models_today.length > 0 && (
@@ -82,7 +70,6 @@ export default function Details() {
             <div className="d-model-row" key={m.model}>
               <span className="d-model-name">{shortModel(m.model)}</span>
               <span className="d-model-tok">{formatTokens(m.tokens)}</span>
-              <span className="d-model-cost">{formatCost(m.cost)}</span>
             </div>
           ))}
         </section>
@@ -120,44 +107,35 @@ export default function Details() {
           {feedLeft > 0 ? `🍚 냠냠… (${feedLeft}s)` : '🍚 먹이 주기'}
         </button>
 
-        <label className="d-field">
-          <span>일일 예산 (USD)</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={config.dailyBudget}
-            onChange={(e) => patch({ dailyBudget: Number(e.target.value) || 0 })}
-          />
-        </label>
-
-        <label className="d-toggle">
-          <input
-            type="checkbox"
-            checked={config.notifyEnabled}
-            onChange={(e) => patch({ notifyEnabled: e.target.checked })}
-          />
-          <span>예산 알림 (80% / 100%)</span>
-        </label>
-
         <div className="d-thresholds">
-          <div className="d-thresholds-title">상태 임계값 (tokens/min)</div>
+          <div className="d-thresholds-title">상태 임계값 (tokens/min · exhausted은 일일 누적)</div>
           <Slider label="curious ▸" value={config.thresholds.low} max={50_000} onChange={(v) => patchThreshold('low', v)} />
           <Slider label="active ▸" value={config.thresholds.mid} max={150_000} onChange={(v) => patchThreshold('mid', v)} />
           <Slider label="alert ▸" value={config.thresholds.high} max={400_000} onChange={(v) => patchThreshold('high', v)} />
           <Slider label="angry ▸" value={config.thresholds.veryHigh} max={800_000} onChange={(v) => patchThreshold('veryHigh', v)} />
+          <Slider
+            label="exhausted ▸"
+            value={config.exhaustedTokenThreshold}
+            min={10_000_000}
+            max={200_000_000}
+            step={5_000_000}
+            onChange={(v) => patch({ exhaustedTokenThreshold: v })}
+          />
         </div>
+
+        <p className="d-foot">
+          *Claude 팀플랜 flat rate이라 실제 청구액과 무관. 활동성 지표로만 사용
+        </p>
       </section>
     </div>
   );
 }
 
-function Stat({ label, tokens, cost }: { label: string; tokens: number; cost: number }) {
+function Stat({ label, tokens }: { label: string; tokens: number }) {
   return (
     <div className="d-card">
       <div className="d-card-label">{label}</div>
       <div className="d-card-tok">{formatTokens(tokens)}</div>
-      <div className="d-card-cost">{formatCost(cost)}</div>
     </div>
   );
 }
@@ -165,12 +143,16 @@ function Stat({ label, tokens, cost }: { label: string; tokens: number; cost: nu
 function Slider({
   label,
   value,
+  min = 0,
   max,
+  step = 1000,
   onChange,
 }: {
   label: string;
   value: number;
+  min?: number;
   max: number;
+  step?: number;
   onChange: (v: number) => void;
 }) {
   return (
@@ -178,9 +160,9 @@ function Slider({
       <span className="d-slider-label">{label}</span>
       <input
         type="range"
-        min={0}
+        min={min}
         max={max}
-        step={1000}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       />

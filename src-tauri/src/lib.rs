@@ -17,10 +17,6 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview
 
 use usage::Usage;
 
-/// Default daily spend budget in USD. The cat's "how stressed am I" ratio and
-/// the 80%/100% notifications are relative to this. Tunable from the UI.
-const DEFAULT_DAILY_BUDGET: f64 = 20.0;
-
 /// How often we rescan the logs and push a fresh snapshot to the frontend.
 const POLL_SECS: u64 = 30;
 
@@ -102,14 +98,6 @@ pub struct AppState {
     grabbed: AtomicBool,
     /// Latest `CatState` the frontend reported, used to tune the wander.
     cat_state: Mutex<String>,
-    /// Daily budget in USD, and whether budget notifications fire.
-    daily_budget: Mutex<f64>,
-    notify_enabled: AtomicBool,
-    /// Which budget thresholds have already fired today, keyed by day so they
-    /// re-arm at midnight.
-    notified_day: Mutex<String>,
-    notified_80: AtomicBool,
-    notified_100: AtomicBool,
     /// The cat's current logical top-left position within the window (CSS px).
     /// `None` until first placed. Shared with the wander loop (`roam.rs`).
     cat_pos: Mutex<Option<(f64, f64)>>,
@@ -123,11 +111,6 @@ impl Default for AppState {
         Self {
             grabbed: AtomicBool::new(false),
             cat_state: Mutex::new(DEFAULT_CAT_STATE.to_string()),
-            daily_budget: Mutex::new(DEFAULT_DAILY_BUDGET),
-            notify_enabled: AtomicBool::new(true),
-            notified_day: Mutex::new(String::new()),
-            notified_80: AtomicBool::new(false),
-            notified_100: AtomicBool::new(false),
             cat_pos: Mutex::new(None),
             last_feed: Mutex::new(None),
         }
@@ -198,15 +181,6 @@ fn get_mode(state: tauri::State<'_, AppState>) -> String {
 #[tauri::command]
 fn set_cat_state(state: tauri::State<'_, AppState>, cat_state: String) {
     *state.cat_state.lock().unwrap() = cat_state;
-}
-
-/// Persist the two knobs the Rust side cares about (budget + notifications).
-#[tauri::command]
-fn set_config(state: tauri::State<'_, AppState>, daily_budget: f64, notify_enabled: bool) {
-    if daily_budget > 0.0 {
-        *state.daily_budget.lock().unwrap() = daily_budget;
-    }
-    state.notify_enabled.store(notify_enabled, Ordering::SeqCst);
 }
 
 /// Begin an OS-level window drag (called when dragging the cat in grab mode).
@@ -476,66 +450,15 @@ fn setup_overlay(app: &AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
-// Background: poll usage + fire notifications
+// Background: poll usage and push snapshots to the frontend
 // ---------------------------------------------------------------------------
 
 fn spawn_poller(app: AppHandle) {
     std::thread::spawn(move || loop {
         let usage = usage::collect();
         let _ = app.emit("usage", &usage);
-        maybe_notify(&app, &usage);
         std::thread::sleep(Duration::from_secs(POLL_SECS));
     });
-}
-
-fn maybe_notify(app: &AppHandle, usage: &Usage) {
-    use tauri_plugin_notification::NotificationExt;
-
-    let state = app.state::<AppState>();
-    if !state.notify_enabled.load(Ordering::SeqCst) {
-        return;
-    }
-
-    // Re-arm the flags on a new calendar day.
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    {
-        let mut day = state.notified_day.lock().unwrap();
-        if *day != today {
-            *day = today;
-            state.notified_80.store(false, Ordering::SeqCst);
-            state.notified_100.store(false, Ordering::SeqCst);
-        }
-    }
-
-    let budget = *state.daily_budget.lock().unwrap();
-    if budget <= 0.0 {
-        return;
-    }
-    let ratio = usage.today_cost / budget;
-
-    if ratio >= 1.0 && !state.notified_100.swap(true, Ordering::SeqCst) {
-        let _ = app
-            .notification()
-            .builder()
-            .title("clawd — 예산 초과 😾")
-            .body(format!(
-                "오늘 ${:.2} · 일일 예산 ${:.0} 100% 도달",
-                usage.today_cost, budget
-            ))
-            .show();
-    } else if ratio >= 0.8 && !state.notified_80.swap(true, Ordering::SeqCst) {
-        let _ = app
-            .notification()
-            .builder()
-            .title("clawd — 예산 80% ⚠️")
-            .body(format!(
-                "오늘 ${:.2} · 일일 예산 ${:.0}의 {:.0}%",
-                usage.today_cost,
-                budget,
-                ratio * 100.0
-            ))
-            .show();
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +506,6 @@ pub fn run() {
             set_mode,
             get_mode,
             set_cat_state,
-            set_config,
             start_drag,
             open_details,
             hide_details,

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { emit, listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
 import { Config, DEFAULT_CONFIG } from '../types';
 
 const STORE_FILE = 'config.json';
@@ -14,25 +13,17 @@ function getStore(): Promise<Store> {
   return storePromise;
 }
 
+// Rebuild only the fields we know about. Legacy keys from older versions
+// (e.g. `dailyBudget`, `notifyEnabled`) are silently dropped, and any missing
+// key — including a brand-new `exhaustedTokenThreshold` on an upgraded install
+// — falls back to its current default.
 function merge(partial: Partial<Config> | undefined | null): Config {
+  const p = partial ?? {};
   return {
-    ...DEFAULT_CONFIG,
-    ...(partial ?? {}),
-    thresholds: { ...DEFAULT_CONFIG.thresholds, ...(partial?.thresholds ?? {}) },
+    exhaustedTokenThreshold: p.exhaustedTokenThreshold ?? DEFAULT_CONFIG.exhaustedTokenThreshold,
+    catColor: p.catColor ?? DEFAULT_CONFIG.catColor,
+    thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
   };
-}
-
-// Push the two knobs the Rust side needs (budget + notifications) so the
-// background poller notifies against the latest values.
-async function syncToBackend(cfg: Config) {
-  try {
-    await invoke('set_config', {
-      dailyBudget: cfg.dailyBudget,
-      notifyEnabled: cfg.notifyEnabled,
-    });
-  } catch {
-    /* backend may not be ready yet; next save will retry */
-  }
 }
 
 /**
@@ -53,9 +44,7 @@ export function useConfig() {
       .then((s) => s.get<Config>(KEY))
       .then((saved) => {
         if (!alive || liveUpdate.current) return;
-        const cfg = merge(saved);
-        setConfig(cfg);
-        syncToBackend(cfg);
+        setConfig(merge(saved));
       })
       .catch(() => {});
 
@@ -76,7 +65,6 @@ export function useConfig() {
     const store = await getStore();
     await store.set(KEY, next);
     await store.save();
-    await syncToBackend(next);
     await emit(CHANGED_EVENT, next); // notify the other window
   }, []);
 
