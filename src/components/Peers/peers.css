@@ -11,10 +11,7 @@
    ========================================================= */
 .peer-field {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 160px;
+  inset: 0;
   pointer-events: none;
   overflow: hidden;
   z-index: 1;
@@ -22,8 +19,8 @@
 
 .peer-slot {
   position: absolute;
+  top: 0;
   left: 0;
-  bottom: 12px;
 }
 
 .peer-move {
