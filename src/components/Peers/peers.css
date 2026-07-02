@@ -1,45 +1,51 @@
 /* =========================================================
-   Peer cats (social mode) — visiting cats gathered along the
-   bottom-left of the overlay. Click-through decoration, so the
-   strip never eats pointer events meant for the desktop.
+   Peer cats (social mode) — visiting cats roaming the bottom
+   band of the overlay. Click-through decoration, so the field
+   never eats pointer events meant for the desktop.
 
    Motion is layered so nothing fights over `transform`:
-   - .peer-cat   → framer-motion (enter/exit/layout), inline transform
-   - .peer-pace  → slow side-to-side pacing (CSS translateX)
+   - .peer-slot  → framer-motion enter/exit (opacity only)
+   - .peer-move  → imperative wander (CSS translateX transition)
+   - .peer-flip  → face travel direction (scaleX)
    - .peer-sprite→ gentle bob (CSS translateY)
    ========================================================= */
-.peer-strip {
+.peer-field {
   position: absolute;
-  left: 24px;
-  bottom: 16px;
-  display: flex;
-  align-items: flex-end;
-  gap: 18px;
-  max-width: min(70vw, 900px);
-  flex-wrap: wrap;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 160px;
   pointer-events: none;
+  overflow: hidden;
   z-index: 1;
 }
 
-.peer-cat {
+.peer-slot {
+  position: absolute;
+  left: 0;
+  bottom: 12px;
+}
+
+.peer-move {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 76px;
+  width: 80px;
+  will-change: transform;
 }
 
-.peer-pace {
-  animation: peer-pace 5.5s ease-in-out infinite;
+.peer-flip {
+  width: 70px;
+  height: 70px;
 }
-@keyframes peer-pace {
-  0%, 100% { transform: translateX(-6px); }
-  50% { transform: translateX(6px); }
+.peer-flip.flip {
+  transform: scaleX(-1);
 }
 
 .peer-sprite {
-  width: 72px;
-  height: 72px;
+  width: 100%;
+  height: 100%;
   /* Peers read as slightly further away than your own cat. */
   opacity: 0.94;
   filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.22));
@@ -73,7 +79,7 @@
 /* "👋 nickname" bubble shown for a few seconds when a peer first appears. */
 .peer-greet {
   position: absolute;
-  top: -24px;
+  top: -22px;
   left: 50%;
   transform: translateX(-50%);
   padding: 3px 9px;
@@ -87,6 +93,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .peer-pace,
   .peer-sprite { animation: none; }
 }
