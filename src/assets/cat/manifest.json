@@ -23,6 +23,50 @@
       "alert_arched",
       "angry_hiss",
       "exhausted_lie"
+    ],
+    "black": [
+      "sit_forward",
+      "walk_right_a",
+      "walk_right_b",
+      "run_right_a",
+      "run_right_b",
+      "sleep_curled",
+      "alert_arched",
+      "angry_hiss",
+      "exhausted_lie"
+    ],
+    "orange_tabby": [
+      "sit_forward",
+      "walk_right_a",
+      "walk_right_b",
+      "run_right_a",
+      "run_right_b",
+      "sleep_curled",
+      "alert_arched",
+      "angry_hiss",
+      "exhausted_lie"
+    ],
+    "gray_tabby": [
+      "sit_forward",
+      "walk_right_a",
+      "walk_right_b",
+      "run_right_a",
+      "run_right_b",
+      "sleep_curled",
+      "alert_arched",
+      "angry_hiss",
+      "exhausted_lie"
+    ],
+    "white": [
+      "sit_forward",
+      "walk_right_a",
+      "walk_right_b",
+      "run_right_a",
+      "run_right_b",
+      "sleep_curled",
+      "alert_arched",
+      "angry_hiss",
+      "exhausted_lie"
     ]
   }
 }
