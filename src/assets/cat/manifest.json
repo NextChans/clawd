@@ -94,14 +94,14 @@
   },
   "furniture": {
     "kinds": ["tower", "cushion", "bowl"],
-    "note": "tower=T2 Platform, cushion=C3 Cave, bowl=B3 Double. bowl authored for gray_tabby and cream (the cream-toned B3 double); other colors fall back to gray_tabby/bowl.png in code. cream still has no tower/cushion sheet (those props omitted).",
+    "note": "tower=T2 Platform, cushion=C3 Cave, bowl=B3 Double. Missing sheets resolve via FURNITURE_FALLBACK in Furniture.tsx (no files duplicated on disk): cream tower/cushion borrow orange_tabby's cream/beige palette; every non-gray color's bowl borrows gray_tabby. Entries tagged '(fallback: X)' render from X's authored sheet rather than their own.",
     "path": "src/assets/furniture/<color>/<kind>.png",
     "available": {
-      "black": ["tower", "cushion"],
-      "orange_tabby": ["tower", "cushion"],
+      "black": ["tower", "cushion", "bowl (fallback: gray_tabby)"],
+      "orange_tabby": ["tower", "cushion", "bowl (fallback: gray_tabby)"],
       "gray_tabby": ["tower", "cushion", "bowl"],
-      "white": ["tower", "cushion"],
-      "cream": ["bowl"]
+      "white": ["tower", "cushion", "bowl (fallback: gray_tabby)"],
+      "cream": ["tower (fallback: orange_tabby)", "cushion (fallback: orange_tabby)", "bowl"]
     }
   }
 }

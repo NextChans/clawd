@@ -23,18 +23,34 @@ const FURNITURE = import.meta.glob('../../assets/furniture/*/*.png', {
 }) as Record<string, string>;
 
 /**
- * Resolve a furniture image URL for a color, with graceful fallbacks:
- *  - Bowls are authored for `gray_tabby` and `cream` (both the cream-toned B3
- *    double); every *other* color falls back to the gray bowl (file reused, not
- *    duplicated on disk).
- *  - `cream` still has no tower/cushion sheet → those return undefined → the
- *    prop renders nothing (that slot on the baseline is simply omitted).
+ * Per-color fallback chain for furniture art. When a color lacks a given
+ * `kind`'s PNG on disk, we borrow the closest-toned palette instead of
+ * duplicating files. The chain must terminate (no cycles):
+ *  - `cream` authors only its bowl → tower/cushion borrow `orange_tabby` (its
+ *    cream/beige posts match cream best), which in turn chains to `gray_tabby`.
+ *  - every other color falls back to `gray_tabby` (the only complete set), and
+ *    `gray_tabby` itself terminates (`undefined`).
+ */
+const FURNITURE_FALLBACK: Record<CatColor, CatColor | undefined> = {
+  cream: 'orange_tabby',
+  orange_tabby: 'gray_tabby',
+  white: 'gray_tabby',
+  black: 'gray_tabby',
+  gray_tabby: undefined,
+};
+
+/**
+ * Resolve a furniture image URL for a color, walking `FURNITURE_FALLBACK` until
+ * a real PNG is found. Returns `undefined` only when neither the color nor any
+ * fallback in its chain authors that `kind` → the prop renders nothing (that
+ * slot on the baseline is simply omitted). No files are duplicated on disk; the
+ * borrowed URL is reused as-is.
  */
 function furnitureUrl(color: CatColor, kind: FurnitureKind): string | undefined {
   const direct = FURNITURE[`../../assets/furniture/${color}/${kind}.png`];
   if (direct) return direct;
-  if (kind === 'bowl') return FURNITURE['../../assets/furniture/gray_tabby/bowl.png'];
-  return undefined;
+  const fallback = FURNITURE_FALLBACK[color];
+  return fallback ? furnitureUrl(fallback, kind) : undefined;
 }
 
 /**
