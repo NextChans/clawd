@@ -24,6 +24,12 @@
 .d-cat { width: 48px; height: 48px; flex: none; }
 .d-state { font-weight: 700; font-size: 15px; }
 .d-sub { font-size: 11px; opacity: 0.65; }
+.d-reason {
+  font-size: 10.5px;
+  opacity: 0.5;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
 .d-close {
   margin-left: auto;
   border: none;

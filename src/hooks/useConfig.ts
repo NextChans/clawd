@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { emit, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -41,13 +41,18 @@ async function syncToBackend(cfg: Config) {
  */
 export function useConfig() {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
+  // Once a live save/broadcast has set the config, the slow initial store read
+  // must not clobber it back to the on-disk value (startup race between the
+  // async `getStore()` load and an early save / `config-changed` event).
+  const liveUpdate = useRef(false);
 
   useEffect(() => {
     let alive = true;
+
     getStore()
       .then((s) => s.get<Config>(KEY))
       .then((saved) => {
-        if (!alive) return;
+        if (!alive || liveUpdate.current) return;
         const cfg = merge(saved);
         setConfig(cfg);
         syncToBackend(cfg);
@@ -55,7 +60,9 @@ export function useConfig() {
       .catch(() => {});
 
     const un = listen<Config>(CHANGED_EVENT, (e) => {
-      if (alive) setConfig(merge(e.payload));
+      if (!alive) return;
+      liveUpdate.current = true;
+      setConfig(merge(e.payload));
     });
     return () => {
       alive = false;
@@ -64,6 +71,7 @@ export function useConfig() {
   }, []);
 
   const save = useCallback(async (next: Config) => {
+    liveUpdate.current = true;
     setConfig(next);
     const store = await getStore();
     await store.set(KEY, next);

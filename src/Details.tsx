@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
-import { classify, STATE_LABEL } from './hooks/useCatState';
+import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { Config } from './types';
 import { formatCost, formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
@@ -11,7 +11,7 @@ import './details.css';
 export default function Details() {
   const usage = useUsage();
   const { config, save } = useConfig();
-  const state = classify(usage, config);
+  const { state, reason } = classifyWithReason(usage, config);
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
@@ -29,6 +29,9 @@ export default function Details() {
           <div className="d-state">{STATE_LABEL[state]}</div>
           <div className="d-sub">
             {usage.session_active ? '● 세션 활성' : `마지막 활동 ${formatIdle(usage.idle_minutes)}`}
+          </div>
+          <div className="d-reason" title="현재 상태가 결정된 이유">
+            이유: {reason}
           </div>
         </div>
         <button className="d-close" onClick={() => invoke('hide_details')} aria-label="close">

@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
-import { classify, STATE_LABEL } from './hooks/useCatState';
+import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { formatCost, formatRate, formatTokens } from './utils/format';
 import './App.css';
 
@@ -44,7 +44,7 @@ const FIRST_RUN_KEY = 'first_run_done';
 export default function App() {
   const usage = useUsage();
   const { config } = useConfig();
-  const state = classify(usage, config);
+  const { state, reason } = classifyWithReason(usage, config);
   const [hover, setHover] = useState(false);
   const [mode, setMode] = useState<Mode>('roam');
   const [gait, setGait] = useState<Gait>('idle');
@@ -254,6 +254,7 @@ export default function App() {
               <div className="tt-row dim">
                 rate {formatRate(usage.rate_per_min)} · 예산 {Math.round(dailyRatio * 100)}%
               </div>
+              <div className="tt-row dim">이유: {reason}</div>
             </motion.div>
           )}
         </AnimatePresence>
