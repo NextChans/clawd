@@ -258,6 +258,12 @@ impl Transport for LanTransport {
 
 /// How often the iroh transport rebroadcasts our payload into the room.
 const IROH_PUBLISH_INTERVAL: Duration = Duration::from_secs(5);
+/// If a joiner hasn't heard from the room for this long (even while gossip still
+/// reports a neighbor — a stalled direct link with no relay fallback), re-
+/// subscribe to re-dial the bootstrap peer and refresh the connection before
+/// the peer goes stale. Comfortably above the 5s heartbeat so normal jitter
+/// doesn't trigger it.
+const IROH_REDIAL_AFTER: Duration = Duration::from_secs(12);
 
 /// A room invite: the gossip topic plus bootstrap peer addresses. Serialized to
 /// a base32 "room code" the user shares. Mirrors the iroh-gossip chat example.
@@ -396,10 +402,24 @@ async fn run_room(
         let mut neighbors: usize = 0;
         on_status(true, neighbors);
 
+        // A joiner (non-empty bootstrap) re-dials the host to heal a stalled
+        // link; the opener can't (no address to dial) and waits for the joiner
+        // to come back. We key re-dial off *message freshness*, not the neighbor
+        // count: with no relay fallback a direct link can go silent while gossip
+        // still reports the neighbor up, so watching for received data catches
+        // the "🟢 but the cat vanished" case the neighbor count misses.
+        let can_redial = !bootstrap_ids.is_empty();
+        let mut last_activity = Instant::now();
+
         let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
         loop {
             if !running.load(Ordering::SeqCst) {
                 break 'outer;
+            }
+            // Heard nothing for too long → re-subscribe, which re-dials the
+            // bootstrap peer and refreshes the connection before we go stale.
+            if can_redial && last_activity.elapsed() > IROH_REDIAL_AFTER {
+                break;
             }
             tokio::select! {
                 _ = ticker.tick() => {
@@ -413,12 +433,14 @@ async fn run_room(
                 event = receiver.try_next() => {
                     match event {
                         Ok(Some(Event::Received(msg))) => {
+                            last_activity = Instant::now();
                             if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
                                 on_recv(payload);
                             }
                         }
                         Ok(Some(Event::NeighborUp(_))) => {
                             neighbors += 1;
+                            last_activity = Instant::now();
                             on_status(true, neighbors);
                             // Greet the new neighbor with our current state at
                             // once, so their cat shows up without waiting a tick.
