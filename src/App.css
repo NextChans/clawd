@@ -16,6 +16,41 @@
   width: 128px;
   height: 128px;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
+  transition: filter 0.2s ease;
+}
+
+/* Grab mode (⌘⇧C): the cat is interactive. Give it a soft glow + a pulsing
+   ring so it's obvious the window will now catch clicks and drags. */
+.stage.grab .cat-wrap {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18))
+    drop-shadow(0 0 10px rgba(255, 200, 90, 0.85));
+}
+
+.grab-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 132px;
+  height: 132px;
+  margin: -66px 0 0 -66px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 200, 90, 0.9);
+  box-shadow: 0 0 12px 2px rgba(255, 200, 90, 0.55);
+  pointer-events: none;
+  z-index: 5;
+  animation: grab-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes grab-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
 }
 
 .tooltip {

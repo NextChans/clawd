@@ -2,7 +2,7 @@
 //!
 //! The Rust side owns everything the WebView can't do well: reading the
 //! `~/.claude` session logs, keeping the cat window click-through until the
-//! Option key is held, the tray, and native notifications.
+//! ⌘⇧C grab hotkey flips it interactive, the tray, and native notifications.
 
 mod tray;
 mod usage;
@@ -22,12 +22,14 @@ const DEFAULT_DAILY_BUDGET: f64 = 20.0;
 /// How often we rescan the logs and push a fresh snapshot to the frontend.
 const POLL_SECS: u64 = 30;
 
-/// The global hotkey that pins the cat interactive (mouse events captured)
-/// without needing to hold Option. Handy while dragging or clicking around.
+/// The global hotkey that toggles "grab" mode: the cat becomes interactive
+/// (mouse events captured) so you can drag or click it, then passes events
+/// through again when toggled off.
 const PIN_SHORTCUT: &str = "cmd+shift+c";
 
 pub struct AppState {
-    /// When pinned, the cat captures the mouse regardless of the Option key.
+    /// When grabbed (⌘⇧C), the cat captures the mouse instead of passing
+    /// events through. Named `pinned` for backward compat with the store.
     pinned: AtomicBool,
     /// Daily budget in USD, and whether budget notifications fire.
     daily_budget: Mutex<f64>,
@@ -66,9 +68,8 @@ async fn get_usage() -> Usage {
 
 /// Pin / unpin interactive mode (mouse capture without holding Option).
 #[tauri::command]
-fn set_pinned(app: AppHandle, state: tauri::State<'_, AppState>, pinned: bool) {
-    state.pinned.store(pinned, Ordering::SeqCst);
-    apply_ignore_cursor(&app, !pinned);
+fn set_pinned(app: AppHandle, pinned: bool) {
+    set_grab(&app, pinned);
 }
 
 #[tauri::command]
@@ -85,7 +86,7 @@ fn set_config(state: tauri::State<'_, AppState>, daily_budget: f64, notify_enabl
     state.notify_enabled.store(notify_enabled, Ordering::SeqCst);
 }
 
-/// Begin an OS-level window drag (called from Option+drag in the UI).
+/// Begin an OS-level window drag (called when dragging the cat in grab mode).
 #[tauri::command]
 fn start_drag(window: tauri::Window) {
     let _ = window.start_dragging();
@@ -121,6 +122,16 @@ fn apply_ignore_cursor(app: &AppHandle, ignore: bool) {
     if let Some(w) = app.get_webview_window("cat") {
         let _ = w.set_ignore_cursor_events(ignore);
     }
+}
+
+/// Toggle "grab" mode: when grabbed the cat captures the mouse (drag/click),
+/// otherwise events pass straight through. Also broadcasts a `grab-mode` event
+/// so the frontend can show its glowing-ring feedback and stay in sync.
+fn set_grab(app: &AppHandle, grabbed: bool) {
+    let state = app.state::<AppState>();
+    state.pinned.store(grabbed, Ordering::SeqCst);
+    apply_ignore_cursor(app, !grabbed);
+    let _ = app.emit("grab-mode", grabbed);
 }
 
 /// Park the cat near the top-right of the primary monitor with a small inset.
@@ -226,45 +237,6 @@ fn maybe_notify(app: &AppHandle, usage: &Usage) {
 }
 
 // ---------------------------------------------------------------------------
-// Background: watch the Option key (macOS) for the click-through toggle
-// ---------------------------------------------------------------------------
-
-#[cfg(target_os = "macos")]
-fn spawn_option_watch(app: AppHandle) {
-    use rdev::{listen, EventType, Key};
-
-    std::thread::spawn(move || {
-        // rdev needs Accessibility permission on macOS; if it's not granted
-        // `listen` returns an error and we silently fall back to the hotkey.
-        let _ = listen(move |event| {
-            let is_option = matches!(
-                event.event_type,
-                EventType::KeyPress(Key::Alt)
-                    | EventType::KeyPress(Key::AltGr)
-                    | EventType::KeyRelease(Key::Alt)
-                    | EventType::KeyRelease(Key::AltGr)
-            );
-            if !is_option {
-                return;
-            }
-            let state = app.state::<AppState>();
-            if state.pinned.load(Ordering::SeqCst) {
-                return; // pinned mode wins; ignore Option entirely
-            }
-            let pressed = matches!(
-                event.event_type,
-                EventType::KeyPress(Key::Alt) | EventType::KeyPress(Key::AltGr)
-            );
-            // Option held -> capture the mouse; released -> pass through.
-            apply_ignore_cursor(&app, !pressed);
-        });
-    });
-}
-
-#[cfg(not(target_os = "macos"))]
-fn spawn_option_watch(_app: AppHandle) {}
-
-// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -290,8 +262,7 @@ pub fn run() {
                     }
                     let state = app.state::<AppState>();
                     let now = !state.pinned.load(Ordering::SeqCst);
-                    state.pinned.store(now, Ordering::SeqCst);
-                    apply_ignore_cursor(app, !now);
+                    set_grab(app, now);
                 })
                 .build(),
         );
@@ -332,8 +303,7 @@ pub fn run() {
             }
 
             tray::build(app)?;
-            spawn_poller(handle.clone());
-            spawn_option_watch(handle);
+            spawn_poller(handle);
             Ok(())
         })
         .run(tauri::generate_context!())

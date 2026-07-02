@@ -6,7 +6,7 @@ A tiny, frameless, always-on-top cat that lives on your desktop and changes its
 mood based on how hard you're driving Claude Code. Low activity → it naps and
 plays. Burning tokens → it gets alert, then hisses. Near your daily budget →
 it's exhausted. It never gets in your way: the window is **click-through** until
-you hold **Option**.
+you toggle grab mode with **⌘⇧C**.
 
 ```
    /\_/\     clawd watches ~/.claude/projects/**/*.jsonl,
@@ -23,8 +23,9 @@ you hold **Option**.
 - **Floating, no chrome** — transparent background, no title bar, no shadow.
 - **Mood = usage** — the cat animates by token rate and daily budget ratio.
 - **Zero interference** — mouse events pass straight through to the window
-  behind it. Hold **Option** to grab the cat (hover for stats, drag to move,
-  click for details). Or toggle a persistent "grab" mode with **⌘⇧C**.
+  behind it. Press **⌘⇧C** to toggle "grab" mode (hover for stats, drag to
+  move, click for details); press it again to go back to click-through. A
+  glowing ring shows when grab mode is on.
 - **Menu-bar app** — no dock icon; control it from the tray.
 
 ## Cat states
@@ -44,7 +45,7 @@ draft; the other four reuse the same rig with tweaked expression/pose/color.
 
 ## Requirements
 
-- **macOS** (built and tuned for macOS; the Option-key watch is macOS-only).
+- **macOS** (built and tuned for macOS).
 - **Node ≥ 20** — `node --version`
 - **Rust (stable)** — `rustc --version`. If missing:
   ```sh
@@ -70,27 +71,28 @@ The signed/bundled `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
 
 ## Permissions (macOS)
 
-Two OS permissions matter:
+- **Notifications** — for the 80% / 100% daily-budget alerts. Allow when
+  prompted (toggle alerts off in the details window if you don't want them).
 
-1. **Accessibility** — required for the **Option-key** click-through toggle
-   (`rdev` global keyboard monitor). Grant it under *System Settings →
-   Privacy & Security → Accessibility*. Without it, the Option hold won't work,
-   but the **⌘⇧C** grab-mode hotkey still does.
-2. **Notifications** — for the 80% / 100% daily-budget alerts. Allow when
-   prompted (toggle alerts off in the details window if you don't want them).
+That's it — the **⌘⇧C** grab-mode hotkey uses Tauri's global-shortcut plugin
+and needs **no Accessibility permission**. (Earlier builds used an `rdev`
+keyboard monitor for an Option-key hold; that was removed — see the changelog.)
 
 ## Usage
 
-- **Hold Option** → cat becomes interactive:
+- Default → the cat is **click-through**: mouse events pass to the window behind
+  it, so it never gets in your way.
+- **⌘⇧C** → toggle **grab mode** on. A glowing ring appears and the cat becomes
+  interactive:
   - **hover** → tooltip with today's tokens / cost / rate
   - **drag** → move the cat (position is remembered across launches)
   - **click** → open the details window
-- **⌘⇧C** → toggle persistent grab mode (interactive without holding Option).
+- **⌘⇧C** again → grab mode off, back to click-through.
 - **Tray menu** → show/hide the cat, reset position, open details/settings, quit.
 
 ## Tuning thresholds
 
-Open the details window (Option+click the cat, or tray → *상세 · 임계값 설정*):
+Open the details window (⌘⇧C then click the cat, or tray → *상세 · 임계값 설정*):
 
 - **Daily budget (USD)** — default `$20`. Drives the budget ratio and alerts.
 - **Budget alerts** — on/off for the 80% / 100% notifications.
@@ -157,11 +159,21 @@ clawd/
 
 - **Cat art is a hand-drawn draft.** Playing / alert / angry read clearly; the
   other four states are lightweight variations. Refinement welcome.
-- Option-key toggle needs **Accessibility** permission (⌘⇧C fallback otherwise).
 - The log scan re-reads all files every 30 s — fine for typical histories, but
   not incremental. Large histories could be cached by mtime later.
-- macOS only. Windows/Linux would need a different global-key strategy.
+- macOS only. Windows/Linux would need a different global-shortcut strategy.
 - Prices are hardcoded approximations; verify against current Anthropic pricing.
+
+## Changelog
+
+- **v0.1.1** — Removed the `rdev` global keyboard monitor. It called macOS
+  Text Services (`TSMGetInputSourceProperty`) off the main thread, which
+  tripped `dispatch_assert_queue` and crashed the app (`SIGTRAP`) whenever a
+  screenshot tool (⌘⇧3/4/5) launched or the Option key was pressed. Grab mode
+  is now driven solely by the **⌘⇧C** global shortcut (Tauri's
+  `global-shortcut` plugin, no Accessibility permission needed), with a glowing
+  ring for visual feedback.
+- **v0.1.0** — Initial scaffold: floating cat + ccusage integration.
 
 ## Roadmap (v2 ideas)
 

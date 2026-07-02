@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
@@ -18,6 +19,16 @@ export default function App() {
   const { config } = useConfig();
   const state = classify(usage, config);
   const [hover, setHover] = useState(false);
+  // Grab mode (⌘⇧C): the window is interactive rather than click-through.
+  // The Rust side emits `grab-mode` whenever it flips.
+  const [grab, setGrab] = useState(false);
+
+  useEffect(() => {
+    const unlisten = listen<boolean>('grab-mode', (e) => setGrab(e.payload));
+    return () => {
+      unlisten.then((off) => off());
+    };
+  }, []);
 
   // Distinguish a click (open details) from a drag (move window).
   const down = useRef<{ x: number; y: number } | null>(null);
@@ -46,7 +57,7 @@ export default function App() {
 
   return (
     <div
-      className="stage"
+      className={grab ? 'stage grab' : 'stage'}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onClick={onClick}
@@ -70,6 +81,18 @@ export default function App() {
               rate {formatRate(usage.rate_per_min)} · 예산 {Math.round(dailyRatio * 100)}%
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {grab && (
+          <motion.div
+            className="grab-ring"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.2 }}
+          />
         )}
       </AnimatePresence>
 
