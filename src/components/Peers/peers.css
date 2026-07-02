@@ -76,6 +76,16 @@
 .peer-badge { font-size: 12px; }
 .peer-name { overflow: hidden; text-overflow: ellipsis; }
 
+/* Shared-play ❤️ that pops when a visitor comes over to play with your cat. */
+.peer-play-emote {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  margin-left: 10px;
+  font-size: 15px;
+  pointer-events: none;
+}
+
 /* "👋 nickname" bubble shown for a few seconds when a peer first appears. */
 .peer-greet {
   position: absolute;
