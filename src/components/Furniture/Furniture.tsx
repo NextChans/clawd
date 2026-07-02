@@ -4,6 +4,11 @@ import './furniture.css';
 
 export type FurnitureKind = 'tower' | 'cushion' | 'bowl';
 
+/** Cat-tower evolution tier, driven by daily usage (see `usage.rs`
+ * `tower_tier`). Higher tiers load a bigger tower sprite; only `kind='tower'`
+ * uses it. `tower_t2` is the baseline that the legacy `tower.png` aliased. */
+export type TowerTier = 1 | 2 | 3;
+
 /** Where each prop sits along the bottom baseline, as a fraction of the stage
  * width. **Must stay in sync with `roam.rs`'s `anchor_pos`** so the cat lands on
  * the matching prop when its mood sends it there. */
@@ -41,16 +46,20 @@ const FURNITURE_FALLBACK: Record<CatColor, CatColor | undefined> = {
 
 /**
  * Resolve a furniture image URL for a color, walking `FURNITURE_FALLBACK` until
- * a real PNG is found. Returns `undefined` only when neither the color nor any
- * fallback in its chain authors that `kind` → the prop renders nothing (that
+ * a real PNG is found. `asset` is the on-disk basename (e.g. `cushion`, `bowl`,
+ * or a tiered `tower_t3`). Returns `undefined` only when neither the color nor
+ * any fallback in its chain authors that asset → the prop renders nothing (that
  * slot on the baseline is simply omitted). No files are duplicated on disk; the
  * borrowed URL is reused as-is.
+ *
+ * Note the white coat authors no 3-tier tower, so `white`+`tower_t3` falls back
+ * to `gray_tabby/tower_t3` (a real hammock tower) rather than rendering nothing.
  */
-function furnitureUrl(color: CatColor, kind: FurnitureKind): string | undefined {
-  const direct = FURNITURE[`../../assets/furniture/${color}/${kind}.png`];
+function furnitureUrl(color: CatColor, asset: string): string | undefined {
+  const direct = FURNITURE[`../../assets/furniture/${color}/${asset}.png`];
   if (direct) return direct;
   const fallback = FURNITURE_FALLBACK[color];
-  return fallback ? furnitureUrl(fallback, kind) : undefined;
+  return fallback ? furnitureUrl(fallback, asset) : undefined;
 }
 
 /**
@@ -61,12 +70,18 @@ export function Furniture({
   kind,
   color,
   visible,
+  tier = 2,
 }: {
   kind: FurnitureKind;
   color: CatColor;
   visible: boolean;
+  /** Only meaningful for `kind='tower'`: picks `tower_t{tier}`. Ignored
+   * otherwise. Defaults to tier 2 (the legacy baseline tower). */
+  tier?: TowerTier;
 }) {
-  const src = useMemo(() => furnitureUrl(color, kind), [color, kind]);
+  // Towers evolve by tier → tiered asset name; other props use the kind as-is.
+  const asset = kind === 'tower' ? `tower_t${tier}` : kind;
+  const src = useMemo(() => furnitureUrl(color, asset), [color, asset]);
   if (!src) return null;
   return (
     <img
@@ -92,13 +107,16 @@ export function Furniture({
 export function FurnitureBaseline({
   color,
   visibleKinds,
+  towerTier = 2,
 }: {
   color: CatColor;
   visibleKinds: Set<FurnitureKind>;
+  /** Evolution tier for the cat tower (1/2/3), from `usage.tower_tier`. */
+  towerTier?: TowerTier;
 }) {
   return (
     <div className="furniture-baseline" aria-hidden>
-      <Furniture kind="tower" color={color} visible={visibleKinds.has('tower')} />
+      <Furniture kind="tower" color={color} visible={visibleKinds.has('tower')} tier={towerTier} />
       <Furniture kind="cushion" color={color} visible={visibleKinds.has('cushion')} />
       <Furniture kind="bowl" color={color} visible={visibleKinds.has('bowl')} />
     </div>

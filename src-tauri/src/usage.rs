@@ -26,6 +26,14 @@ use walkdir::WalkDir;
 /// contribute to any bucket, so we drop them at parse time.
 const RETAIN_DAYS: i64 = 40;
 
+/// Daily-token thresholds for the cat-tower evolution tier (see the frontend
+/// `Furniture` `tier` prop). `today_tokens` below `TIER2` shows the simple
+/// scratcher (tier 1), below `TIER3` the platform tower (tier 2), else the
+/// hammock tower (tier 3). Token counts include cheap-but-voluminous cache
+/// reads, so these run large — consistent with the other activity thresholds.
+const TOWER_TIER2_MIN_TOKENS: u64 = 20_000_000;
+const TOWER_TIER3_MIN_TOKENS: u64 = 100_000_000;
+
 /// USD per **million** tokens, matched by substring against the model id.
 /// Rough but current figures — see README for the tuning note. Order matters:
 /// more specific ids first, generic family name last.
@@ -98,6 +106,18 @@ pub struct Usage {
     /// Tokens bucketed by local hour of *today* (index 0 = 00:00–00:59 … 23 =
     /// 23:00–23:59). Powers the hourly sparkline.
     pub today_hourly: Vec<u64>,
+
+    /// Tokens bucketed by weekday × local hour over the trailing 7 days (today
+    /// and the previous 6). Outer index is the weekday, Monday = 0 … Sunday = 6;
+    /// inner index is the local hour 0..23. Seven consecutive days cover each
+    /// weekday exactly once, so every row maps to a single calendar date.
+    /// Powers the weekly activity heatmap. Serialized as a `Vec<Vec<u64>>` so a
+    /// non-finite/fixed-array shape never trips serde.
+    pub weekly_hourly: Vec<Vec<u64>>,
+
+    /// Cat-tower evolution tier derived from `today_tokens`: 1 (simple), 2
+    /// (platform, the baseline), or 3 (hammock). See `TOWER_TIER*_MIN_TOKENS`.
+    pub tower_tier: u8,
 
     /// Epoch millis of the last activity, or null if no data was found.
     pub last_activity_ms: Option<i64>,
@@ -261,6 +281,8 @@ pub fn collect() -> Usage {
     let mut out = Usage::default();
     // Fixed 24-slot histogram (one bucket per local hour of today).
     out.today_hourly = vec![0; 24];
+    // 7 weekday rows (Mon=0 … Sun=6) × 24 hourly columns for the heatmap.
+    out.weekly_hourly = vec![vec![0u64; 24]; 7];
 
     let dir = match claude_projects_dir() {
         Some(d) if d.is_dir() => d,
@@ -292,6 +314,8 @@ pub fn collect() -> Usage {
         .unwrap()
         .with_timezone(&Utc);
     let yesterday_start = today_start - Duration::days(1);
+    // Trailing-7-day window (today + previous 6 local days) for the heatmap.
+    let week7_start = today_start - Duration::days(6);
     let now_utc = now.with_timezone(&Utc);
     let week_start = now_utc - Duration::days(7);
     let five_min = now_utc - Duration::minutes(5);
@@ -405,6 +429,16 @@ pub fn collect() -> Usage {
                 // Strictly the previous calendar day (today branch took ≥today).
                 out.yesterday_tokens += turn.total_tokens;
             }
+            // Weekly heatmap: bucket by weekday (Mon=0) × local hour. Independent
+            // of the today/yesterday split above — the window spans 7 days.
+            if ts >= week7_start {
+                let local = ts.with_timezone(&Local);
+                let wd = local.weekday().num_days_from_monday() as usize; // Mon=0..Sun=6
+                let hr = local.hour() as usize;
+                if let Some(slot) = out.weekly_hourly.get_mut(wd).and_then(|r| r.get_mut(hr)) {
+                    *slot += turn.total_tokens;
+                }
+            }
             if ts >= five_min {
                 out.tokens_last_5min += turn.total_tokens;
             }
@@ -414,6 +448,14 @@ pub fn collect() -> Usage {
         }
     }
     drop(store);
+
+    out.tower_tier = if out.today_tokens < TOWER_TIER2_MIN_TOKENS {
+        1
+    } else if out.today_tokens < TOWER_TIER3_MIN_TOKENS {
+        2
+    } else {
+        3
+    };
 
     out.rate_per_min = out.tokens_last_5min / 5;
     // Large finite sentinel rather than INFINITY — serde_json rejects

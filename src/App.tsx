@@ -454,7 +454,13 @@ export default function App() {
     <div className={grab ? 'stage grab' : 'stage'}>
       {/* Decorative furniture row (Roam only — the grab window would clip it).
           Rendered before the cat so the cat always sits in front of its props. */}
-      {!grab && <FurnitureBaseline color={config.catColor} visibleKinds={visibleFurniture} />}
+      {!grab && (
+        <FurnitureBaseline
+          color={config.catColor}
+          visibleKinds={visibleFurniture}
+          towerTier={usage.tower_tier}
+        />
+      )}
 
       {/* Plaything the cat reacts to (Roam only). The outer element is glided
           imperatively via flyRef; the inner element carries the per-kind CSS

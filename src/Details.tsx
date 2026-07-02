@@ -4,6 +4,7 @@ import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { Cat } from './components/Cat/Cat';
 import { ModelDonut } from './components/Charts/ModelDonut';
 import { HourlySparkline } from './components/Charts/HourlySparkline';
+import { WeeklyHeatmap } from './components/Charts/WeeklyHeatmap';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
@@ -111,9 +112,11 @@ export default function Details() {
         <Stat label="이번 달" tokens={usage.month_tokens} />
       </section>
 
+      <ModelDonut models={usage.models_today} />
+
       <HourlySparkline data={usage.today_hourly} />
 
-      <ModelDonut models={usage.models_today} />
+      <WeeklyHeatmap data={usage.weekly_hourly} />
 
       <div className="d-activity">
         rate {formatRate(usage.rate_per_min)} · 오늘 {formatTokens(usage.today_tokens)}

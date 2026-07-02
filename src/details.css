@@ -11,7 +11,7 @@
 }
 @media (prefers-color-scheme: dark) {
   .details { color: #efe7d8; background: #241f19; }
-  .d-card, .d-model-row, .d-thresholds, .d-spark, .d-donut { background: #2f2921 !important; }
+  .d-card, .d-model-row, .d-thresholds, .d-spark, .d-donut, .d-heat { background: #2f2921 !important; }
   .d-field input, .d-slider input { color: #efe7d8; }
 }
 
@@ -144,6 +144,30 @@
 .d-donut-name { font-weight: 600; }
 .d-donut-pct { margin-left: auto; opacity: 0.85; }
 .d-donut-tok { width: 46px; text-align: right; opacity: 0.6; }
+
+/* Weekly heatmap (trailing 7 days × 24 local hours). */
+.d-heat {
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px 6px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.d-heat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.d-heat-hint { font-variant-numeric: tabular-nums; }
+.d-heat svg { display: block; }
+.d-heat-wd { fill: currentColor; font-size: 8px; opacity: 0.55; }
+.d-heat-wd.today { opacity: 0.95; font-weight: 700; }
+.d-heat-hr { fill: currentColor; font-size: 7.5px; opacity: 0.45; font-variant-numeric: tabular-nums; }
+.d-heat-today { stroke: #e8a13a; stroke-width: 1.2; }
+.d-heat rect { cursor: default; }
 
 .d-models { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
 .d-model-row {

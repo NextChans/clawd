@@ -25,6 +25,13 @@ export interface Usage {
   yesterday_tokens: number;
   /** Tokens per local hour of today: index 0 = 00:00 … 23 = 23:00. */
   today_hourly: number[];
+  /** Tokens by weekday × local hour over the trailing 7 days. Outer index is
+   * the weekday (Monday = 0 … Sunday = 6), inner is the hour 0..23. Powers the
+   * weekly heatmap. */
+  weekly_hourly: number[][];
+  /** Cat-tower evolution tier from today's tokens: 1 (simple) / 2 (platform) /
+   * 3 (hammock). */
+  tower_tier: 1 | 2 | 3;
 
   last_activity_ms: number | null;
   models_today: ModelUsage[];
@@ -45,6 +52,8 @@ export const EMPTY_USAGE: Usage = {
   month_cost: 0,
   yesterday_tokens: 0,
   today_hourly: Array(24).fill(0),
+  weekly_hourly: Array.from({ length: 7 }, () => Array(24).fill(0)),
+  tower_tier: 2,
   last_activity_ms: null,
   models_today: [],
   error: null,
