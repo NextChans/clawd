@@ -301,6 +301,10 @@ type OnRoom = Arc<dyn Fn(String) + Send + Sync>;
 /// room that isn't linking up across networks.
 type OnStatus = Arc<dyn Fn(bool, usize) + Send + Sync>;
 
+/// Called with a short human-readable diagnostic string (e.g. the assigned
+/// relay) so a stuck room can be debugged from the UI.
+type OnDebug = Arc<dyn Fn(String) + Send + Sync>;
+
 /// The async heart of the iroh transport: build endpoint + gossip, join/open
 /// the room, then broadcast our latest payload on a cadence while handing
 /// received payloads to `on_recv`, until `running` clears.
@@ -313,6 +317,7 @@ async fn run_room(
     on_recv: OnRecv,
     on_room: OnRoom,
     on_status: OnStatus,
+    on_debug: OnDebug,
 ) -> anyhow::Result<()> {
     // `discovery_n0` publishes our NodeId → address (incl. relay) to n0's DNS
     // and resolves peers the same way, so a joiner can reach the host across
@@ -345,6 +350,18 @@ async fn run_room(
     )
     .await;
 
+    // Surface the relay we got — the decisive clue when a room won't link up
+    // across networks (no relay ⇒ that network is blocking it).
+    let relays = endpoint.home_relay().get();
+    if relays.is_empty() {
+        on_debug("릴레이 없음 — 이 네트워크가 릴레이를 막는 듯".to_string());
+    } else {
+        on_debug(format!(
+            "릴레이 {}",
+            relays.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+
     // Publish a shareable code that includes our own address, so joiners can
     // bootstrap off us even if the original host is gone.
     let me = endpoint.node_addr().initialized().await;
@@ -359,58 +376,69 @@ async fn run_room(
     }
     let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
-    // Subscribe without blocking on a neighbor: `subscribe_and_join` waits for
-    // the first NeighborUp, which would freeze this whole loop (and the status)
-    // whenever a link can't form. With `subscribe` we're "in the room"
-    // immediately (🟡), broadcast right away, and flip to 🟢 as NeighborUp
-    // events arrive — so the UI distinguishes "waiting" from "not connecting".
-    on_status(false, 0);
-    let (sender, mut receiver) = gossip.subscribe(topic, bootstrap_ids).await?.split();
-    let mut neighbors: usize = 0;
-    on_status(true, neighbors);
-
-    let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
-    loop {
-        if !running.load(Ordering::SeqCst) {
-            break;
-        }
-        tokio::select! {
-            _ = ticker.tick() => {
-                let payload = local.lock().unwrap().clone();
-                if let Some(payload) = payload {
-                    if let Ok(json) = serde_json::to_vec(&payload) {
-                        let _ = sender.broadcast(Bytes::from(json)).await;
-                    }
-                }
+    // Reconnect loop. We use `subscribe` (not `subscribe_and_join`) so we're
+    // "in the room" immediately (🟡), broadcast right away, and flip to 🟢 as
+    // NeighborUp events arrive. If the gossip stream ends — a relay/link hiccup
+    // — we re-subscribe instead of tearing the room down for good; otherwise a
+    // transient drop stops our heartbeats and the peer's cat goes stale and
+    // vanishes ("appeared then disappeared").
+    'outer: while running.load(Ordering::SeqCst) {
+        on_status(false, 0);
+        let sub = match gossip.subscribe(topic, bootstrap_ids.clone()).await {
+            Ok(s) => s,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
             }
-            event = receiver.try_next() => {
-                match event {
-                    Ok(Some(Event::Received(msg))) => {
-                        if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
-                            on_recv(payload);
+        };
+        let (sender, mut receiver) = sub.split();
+        let mut neighbors: usize = 0;
+        on_status(true, neighbors);
+
+        let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
+        loop {
+            if !running.load(Ordering::SeqCst) {
+                break 'outer;
+            }
+            tokio::select! {
+                _ = ticker.tick() => {
+                    let payload = local.lock().unwrap().clone();
+                    if let Some(payload) = payload {
+                        if let Ok(json) = serde_json::to_vec(&payload) {
+                            let _ = sender.broadcast(Bytes::from(json)).await;
                         }
                     }
-                    Ok(Some(Event::NeighborUp(_))) => {
-                        neighbors += 1;
-                        on_status(true, neighbors);
-                        // Greet the new neighbor with our current state at once,
-                        // so their cat shows up without waiting for the next tick.
-                        let payload = local.lock().unwrap().clone();
-                        if let Some(payload) = payload {
-                            if let Ok(json) = serde_json::to_vec(&payload) {
-                                let _ = sender.broadcast(Bytes::from(json)).await;
+                }
+                event = receiver.try_next() => {
+                    match event {
+                        Ok(Some(Event::Received(msg))) => {
+                            if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
+                                on_recv(payload);
                             }
                         }
+                        Ok(Some(Event::NeighborUp(_))) => {
+                            neighbors += 1;
+                            on_status(true, neighbors);
+                            // Greet the new neighbor with our current state at
+                            // once, so their cat shows up without waiting a tick.
+                            let payload = local.lock().unwrap().clone();
+                            if let Some(payload) = payload {
+                                if let Ok(json) = serde_json::to_vec(&payload) {
+                                    let _ = sender.broadcast(Bytes::from(json)).await;
+                                }
+                            }
+                        }
+                        Ok(Some(Event::NeighborDown(_))) => {
+                            neighbors = neighbors.saturating_sub(1);
+                            on_status(true, neighbors);
+                        }
+                        Ok(Some(_)) => {}
+                        Ok(None) | Err(_) => break, // stream ended → re-subscribe
                     }
-                    Ok(Some(Event::NeighborDown(_))) => {
-                        neighbors = neighbors.saturating_sub(1);
-                        on_status(true, neighbors);
-                    }
-                    Ok(Some(_)) => {}
-                    Ok(None) | Err(_) => break,
                 }
             }
         }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     let _ = router.shutdown().await;
@@ -443,7 +471,13 @@ impl IrohTransport {
         *self.local.lock().unwrap() = Some(payload);
     }
 
-    fn start(&mut self, on_recv: OnRecv, on_room: OnRoom, on_status: OnStatus) -> Result<(), String> {
+    fn start(
+        &mut self,
+        on_recv: OnRecv,
+        on_room: OnRoom,
+        on_status: OnStatus,
+        on_debug: OnDebug,
+    ) -> Result<(), String> {
         let secret: SecretKey = self.secret_hex.parse().map_err(|e| format!("bad key: {e}"))?;
         let room = match &self.room_code {
             Some(code) => Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?),
@@ -457,7 +491,9 @@ impl IrohTransport {
                 Ok(rt) => rt,
                 Err(_) => return,
             };
-            let _ = rt.block_on(run_room(secret, room, local, running, on_recv, on_room, on_status));
+            let _ = rt.block_on(run_room(
+                secret, room, local, running, on_recv, on_room, on_status, on_debug,
+            ));
         }));
         Ok(())
     }
@@ -618,7 +654,11 @@ impl Presence {
         let on_status: OnStatus = Arc::new(move |joined: bool, neighbors: usize| {
             let _ = app_status.emit("remote-status", (joined, neighbors));
         });
-        transport.start(on_recv, on_room, on_status)?;
+        let app_debug = app.clone();
+        let on_debug: OnDebug = Arc::new(move |msg: String| {
+            let _ = app_debug.emit("remote-debug", msg);
+        });
+        transport.start(on_recv, on_room, on_status, on_debug)?;
         *self.iroh.lock().unwrap() = Some(transport);
         self.iroh_on.store(true, Ordering::SeqCst);
         self.ensure_prune(app);

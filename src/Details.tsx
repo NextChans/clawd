@@ -283,6 +283,7 @@ export default function Details() {
                     ? `🟢 연결됨 · 친구 ${room.neighbors}명`
                     : '🟡 방에 있음 · 친구 기다리는 중 (안 잡히면 방화벽/네트워크일 수 있어요)'}
               </div>
+              {room.debug && <div className="d-room-conn">🔧 {room.debug}</div>}
               {room.code ? (
                 <div className="d-room-row">
                   <input
