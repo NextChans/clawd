@@ -14,7 +14,7 @@ export type TowerTier = 1 | 2 | 3;
  * the matching prop when its mood sends it there. */
 export const FURNITURE_X: Record<FurnitureKind, number> = {
   tower: 0.2,
-  cushion: 0.5,
+  cushion: 0.88,
   bowl: 0.8,
 };
 

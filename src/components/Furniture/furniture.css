@@ -43,7 +43,9 @@
   left: 20%;
 }
 .furniture-cushion {
-  left: 50%;
+  /* Tucked into the bottom-right corner so a sleeping cat naps out of the way
+     of your work (kept in sync with roam.rs `anchor_pos` + `FURNITURE_X`). */
+  left: 88%;
 }
 .furniture-bowl {
   left: 80%;
