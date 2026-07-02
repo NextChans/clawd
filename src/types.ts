@@ -52,14 +52,15 @@ export interface Thresholds {
   veryHigh: number;
 }
 
-/** Selectable coat colors. `orange` / `gray` are tabbies (stripes shown). */
-export type CatColor = 'cream' | 'black' | 'orange' | 'gray' | 'white';
+/** Selectable coat colors. `orange_tabby` / `gray_tabby` show stripes. These
+ * ids are also the on-disk asset folder names (`src/assets/cat/<id>/`). */
+export type CatColor = 'cream' | 'black' | 'orange_tabby' | 'gray_tabby' | 'white';
 
 export const CAT_COLORS: { id: CatColor; label: string; swatch: string }[] = [
   { id: 'cream', label: '크림', swatch: '#f7e6c4' },
   { id: 'black', label: '검정', swatch: '#35312f' },
-  { id: 'orange', label: '치즈', swatch: '#f3b877' },
-  { id: 'gray', label: '고등어', swatch: '#b8bdc1' },
+  { id: 'orange_tabby', label: '치즈', swatch: '#f3b877' },
+  { id: 'gray_tabby', label: '고등어', swatch: '#b8bdc1' },
   { id: 'white', label: '흰둥이', swatch: '#fbf7f1' },
 ];
 

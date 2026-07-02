@@ -122,6 +122,23 @@ sync live between the cat and details windows.
 > but voluminous, so tokens/min runs large during active sessions. The default
 > thresholds account for this; tune to taste.
 
+## Cat art & coat colors
+
+The cat renders from **PNG sprites** in `src/assets/cat/<color>/<pose>.png`,
+falling back to a built-in **vector cat** (`CatSvg.tsx`) for any sprite that
+isn't present — so the app runs fine with the sprite folders empty and you can
+fill them in incrementally.
+
+- **Colors** (pick in the details window; persists in config, live-syncs to the
+  cat): `cream` · `black` · `orange_tabby` · `gray_tabby` · `white`.
+- **Poses** (9): `sit_forward`, `walk_right_a/b`, `run_right_a/b`,
+  `sleep_curled`, `alert_arched`, `angry_hiss`, `exhausted_lie`. Walk/run are
+  two-frame flip animations; side poses face right and mirror automatically.
+
+See **[`src/assets/cat/README.md`](src/assets/cat/README.md)** for the exact
+file layout, image requirements (transparent, square, centered), and a ready-to-
+use **Nano Banana / Gemini image prompt** for generating a consistent set.
+
 ## How usage is computed
 
 `src-tauri/src/usage.rs` walks `~/.claude/projects/**/*.jsonl`, and for each
@@ -190,23 +207,24 @@ clawd/
 
 ## Changelog
 
-- **v0.4.0** — **New sticker-style cat + coat colors + tooltip auto-flip + tray
-  title sync.** Fully redrew the cat as a chunky, thick-line "sticker" — pastel
-  fills, big eyes, pink cheeks — with the **viewpoint chosen per pose** for the
-  most natural read: `sit` faces you (front view, mood-driven face), `walk`/`run`
-  are an elongated side profile sharing one rig, and `sleep` / `alert` / `angry`
-  / `exhausted` each get their own angle. Gait animations swing the legs in
-  diagonal pairs from the hip, bob the body, stream the tail back at a run, and
-  puff it for alert/angry; the profile flips with `scaleX(-1)` when heading left.
-  Added **5 coat colors** — cream, black, orange & gray tabbies (with a stripe
-  layer), and white — driven by CSS custom properties and switchable from a new
-  swatch picker in the details window (persists in config, live-syncs to the cat
-  window). The **tooltip now auto-flips**: it measures the cat against the
-  (small, edge-clamped) grab window and hugs the near edge — or drops below the
-  cat — so it never clips off-window (it also fades only now, so framer-motion no
-  longer clobbers the centering transform). The **tray title** reliably reflects
-  the mode (🐾 Roam / ✋ Grab) — macOS wouldn't clear a `None` title, so the "✋"
-  suffix used to stick after switching back to Roam.
+- **v0.4.0** — **PNG sprite cat + coat colors + tooltip auto-flip + tray title
+  sync.** The cat now renders from **PNG sprites**
+  (`src/assets/cat/<color>/<pose>.png`) so the character can be authored as real
+  art (e.g. Nano Banana / Gemini image) instead of hand-drawn SVG — with a
+  built-in **vector fallback** (`CatSvg.tsx`) for any sprite not present yet, so
+  the app runs before the art arrives and degrades gracefully. Walk/run are
+  two-frame flip animations; side poses face right and mirror with `scaleX(-1)`.
+  Added **5 coat colors** — cream, black, orange & gray tabbies, white —
+  selectable from a new swatch picker in the details window (persists in config,
+  live-syncs to the cat window); each color is a folder of sprites (and a themed
+  palette for the vector fallback). Along the way the vector cat was also redrawn
+  chunky/sticker-style with per-pose viewpoints. The **tooltip now auto-flips**:
+  it measures the cat against the (small, edge-clamped) grab window and hugs the
+  near edge — or drops below the cat — so it never clips off-window (it also
+  fades only now, so framer-motion no longer clobbers the centering transform).
+  The **tray title** reliably reflects the mode (🐾 Roam / ✋ Grab) — macOS
+  wouldn't clear a `None` title, so the "✋" suffix used to stick after switching
+  back to Roam.
 - **v0.3.0** — **Full-screen overlay + smooth walking/running animation.**
   Reworked wandering from the ground up. The cat window is now a screen-sized,
   transparent, **click-through overlay** and the cat moves *within* it via

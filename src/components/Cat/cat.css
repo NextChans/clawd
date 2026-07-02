@@ -34,7 +34,7 @@
   --cat-pupil: #161514;
   --cat-eye-hl: 0;
 }
-.color-orange {
+.color-orange_tabby {
   --cat-line: #2c2420;
   --cat-body: #f3b877;
   --cat-belly: #fff8ef;
@@ -44,7 +44,7 @@
   --cat-stripe: #e0954d;
   --cat-stripe-op: 1;
 }
-.color-gray {
+.color-gray_tabby {
   --cat-line: #2c2420;
   --cat-body: #b8bdc1;
   --cat-belly: #f5f6f7;
@@ -273,4 +273,36 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cat * { animation: none !important; }
+}
+
+/* =========================================================
+   PNG sprite renderer (Cat.tsx). A square box that the sprite
+   is `contain`-fitted into; walk/run flip between two frames.
+   ========================================================= */
+.cat-img {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.cat-img .frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* frame-a sits underneath; frame-b hard-cuts on/off on top → 2-frame flip. */
+.cat-img.two-frame .frame-b {
+  animation: sprite-flip var(--frame-dur, 0.5s) steps(1, end) infinite;
+}
+.cat-img.two-frame.speed-walk { --frame-dur: 0.5s; }
+.cat-img.two-frame.speed-fast { --frame-dur: 0.3s; }
+@keyframes sprite-flip {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cat-img .frame-b { animation: none !important; }
 }
