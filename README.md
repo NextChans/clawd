@@ -190,6 +190,18 @@ clawd/
 
 ## Changelog
 
+- **v0.4.0** — **Side-view cat + tooltip auto-flip + tray title sync.**
+  Redrew the cat in **profile** (facing right, flips with `scaleX(-1)` when it
+  heads left) instead of the old head-on doodle that just mirrored. Six hand-
+  authored postures — `sit`, a shared walk/run standing rig, `sleep`, `alert`,
+  `angry`, `exhausted` — with gait animations that swing the legs in diagonal
+  pairs from the hip, bob the body, stream the tail back at a run, and puff it
+  for alert/angry. The **tooltip now auto-flips**: it measures the cat against
+  the (small, edge-clamped) grab window and hugs the near edge — or drops below
+  the cat — so it never clips off-window again (the old centered tooltip was
+  also fighting framer-motion over `transform`; it now fades only). The **tray
+  title** reliably reflects the mode (🐾 Roam / ✋ Grab) — macOS wouldn't clear a
+  `None` title, so the "✋" suffix used to stick after switching back to Roam.
 - **v0.3.0** — **Full-screen overlay + smooth walking/running animation.**
   Reworked wandering from the ground up. The cat window is now a screen-sized,
   transparent, **click-through overlay** and the cat moves *within* it via

@@ -82,11 +82,14 @@ pub fn update_mode(app: &AppHandle, grab: bool) {
     };
     let _ = h.roam_item.set_checked(!grab);
     let _ = h.grab_item.set_checked(grab);
+    // Always set a concrete, non-empty title: on macOS `set_title(None)` doesn't
+    // reliably clear a previously-set title, which left the "✋" suffix stuck
+    // after switching back to Roam. A per-mode glyph is also a clearer indicator.
     if grab {
         let _ = h.tray.set_tooltip(Some("clawd — 🖐️ 잡기 (Grab)"));
         let _ = h.tray.set_title(Some("✋"));
     } else {
         let _ = h.tray.set_tooltip(Some("clawd — 🐾 놀기 (Roam)"));
-        let _ = h.tray.set_title(None::<&str>);
+        let _ = h.tray.set_title(Some("🐾"));
     }
 }

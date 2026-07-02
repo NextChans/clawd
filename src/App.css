@@ -34,7 +34,7 @@
   width: 100%;
   height: 100%;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
-  transition: filter 0.2s ease;
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
 /* Face the travel direction. */
 .cat-flip.flip {
@@ -80,11 +80,9 @@
 .tooltip {
   position: absolute;
   bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
   margin-bottom: 8px;
   width: max-content;
-  max-width: 220px;
+  max-width: 240px;
   padding: 6px 10px;
   border-radius: 10px;
   background: rgba(28, 24, 20, 0.92);
@@ -95,6 +93,26 @@
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 10;
+}
+/* Auto-flip anchoring (set from App.tsx). Center uses transform; the edge
+   variants anchor to the cat container's left/right edge so a tooltip near a
+   window edge stays fully on-window. `tt-below` drops it under the cat when
+   there isn't room above. */
+.tooltip.tt-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tooltip.tt-left {
+  left: 0;
+}
+.tooltip.tt-right {
+  right: 0;
+}
+.tooltip.tt-below {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 8px;
 }
 
 /* Mode-switch badge + first-run hint ride *below* the cat, so they never clip

@@ -28,6 +28,10 @@ interface PlaceEvent {
 }
 
 const FIRST_RUN_KEY = 'first_run_done';
+/** Tooltip max width (px); must match `.tooltip { max-width }` in App.css. */
+const TOOLTIP_MAX = 240;
+/** How the tooltip is anchored over the cat once auto-flip has run. */
+type TtAlign = 'center' | 'left' | 'right';
 
 /**
  * The cat window is a full-screen, transparent, click-through overlay. The cat
@@ -46,6 +50,10 @@ export default function App() {
   const { config } = useConfig();
   const { state, reason } = classifyWithReason(usage, config);
   const [hover, setHover] = useState(false);
+  // Tooltip placement, recomputed each time it's shown so it never clips out of
+  // the (small, edge-clamped) grab window.
+  const [ttAlign, setTtAlign] = useState<TtAlign>('center');
+  const [ttBelow, setTtBelow] = useState(false);
   const [mode, setMode] = useState<Mode>('roam');
   const [gait, setGait] = useState<Gait>('idle');
   const [direction, setDirection] = useState<Direction>('right');
@@ -194,6 +202,27 @@ export default function App() {
     invoke('open_details').catch(() => {});
   };
 
+  // Decide where the tooltip sits so it stays inside the window. The grab
+  // window is small (≈300px) and gets clamped against the screen edge, so a
+  // cat parked near an edge would push a centered tooltip off the window — we
+  // flip it to hug whichever edge the cat is close to, and drop it below the
+  // cat when there isn't room above.
+  const onMouseEnter = () => {
+    const el = containerRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const catCenter = r.left + r.width / 2;
+      const half = TOOLTIP_MAX / 2;
+      const pad = 12;
+      let align: TtAlign = 'center';
+      if (catCenter + half > window.innerWidth - pad) align = 'right';
+      else if (catCenter - half < pad) align = 'left';
+      setTtAlign(align);
+      setTtBelow(r.top < 96); // not enough headroom above → sit below the cat
+    }
+    setHover(true);
+  };
+
   const dailyRatio = config.dailyBudget > 0 ? usage.today_cost / config.dailyBudget : 0;
 
   return (
@@ -204,7 +233,7 @@ export default function App() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onClick={onClick}
-        onMouseEnter={() => setHover(true)}
+        onMouseEnter={onMouseEnter}
         onMouseLeave={() => setHover(false)}
       >
         {/* First-run hint — a wider, friendlier tooltip that rides above the cat. */}
@@ -241,10 +270,12 @@ export default function App() {
         <AnimatePresence>
           {hover && grab && (
             <motion.div
-              className="tooltip"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
+              className={`tooltip tt-${ttAlign}${ttBelow ? ' tt-below' : ''}`}
+              // Fade only — animating transform here would clobber the CSS
+              // `translateX(-50%)` that centers the tooltip.
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
               <div className="tt-title">{STATE_LABEL[state]}</div>

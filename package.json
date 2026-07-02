@@ -1,7 +1,7 @@
 {
   "name": "clawd",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Cute floating cat that shows Claude Code usage on macOS",
   "scripts": {
