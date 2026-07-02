@@ -1,0 +1,193 @@
+/* Pastel palette — tweak here to re-skin the cat. */
+.cat {
+  --fur: #f6e7c7;
+  --fur-shade: #ecd9ae;
+  --line: #7a6653;
+  --ear: #f7c6ce;
+  --nose: #f58ba0;
+  --eye: #3a3327;
+  --cheek: transparent;
+
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  display: block;
+}
+
+/* ---- base anatomy ---- */
+.fur-line {
+  fill: var(--fur);
+  stroke: var(--line);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+.ear-inner {
+  fill: var(--ear);
+  stroke: none;
+}
+.nose {
+  fill: var(--nose);
+  stroke: none;
+}
+.whisker {
+  stroke: var(--line);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  opacity: 0.65;
+}
+.cheek {
+  fill: var(--cheek);
+  stroke: none;
+  transition: fill 0.3s ease;
+}
+
+/* ---- eyes / mouth / brows ---- */
+.eye {
+  fill: var(--eye);
+  stroke: none;
+}
+.eye-light {
+  fill: #fff;
+  opacity: 0.9;
+}
+.eye-line {
+  fill: none;
+  stroke: var(--eye);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.eye-line.thick {
+  stroke-width: 3;
+}
+.brow {
+  stroke: var(--line);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.brow.angry {
+  stroke: #a5563f;
+}
+.mouth-line {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.mouth-line.no-fill {
+  fill: none;
+}
+.mouth-open {
+  fill: #c65b6b;
+  stroke: var(--line);
+  stroke-width: 1.6;
+}
+.mouth-open.fill {
+  fill: #b0344a;
+}
+.fang {
+  fill: #fff;
+  stroke: none;
+}
+
+/* ---- accessory glyphs ---- */
+.glyph {
+  fill: var(--line);
+  font: 700 16px system-ui, sans-serif;
+}
+.glyph.small { font-size: 12px; }
+.glyph.tiny { font-size: 9px; }
+.glyph.pop { font-size: 22px; }
+.glyph.question { fill: #6aa9d9; }
+.glyph.bang { fill: #e8a13a; }
+.glyph-fill.spark { fill: #ffd54a; stroke: none; }
+.drop { fill: #7fc7e8; stroke: none; }
+
+/* =========================================================
+   Idle animations — speed varies with mood
+   ========================================================= */
+.cat-breathe {
+  transform-box: fill-box;
+  transform-origin: 60px 90px;
+  animation: breathe 3.4s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.03) translateY(-1px); }
+}
+
+.cat-tail {
+  transform-box: fill-box;
+  transform-origin: 88px 112px;
+  animation: wag 2.6s ease-in-out infinite;
+}
+@keyframes wag {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(10deg); }
+}
+
+.cat-whiskers {
+  transform-box: fill-box;
+  transform-origin: 60px 62px;
+  animation: twitch 5s ease-in-out infinite;
+}
+@keyframes twitch {
+  0%, 92%, 100% { transform: rotate(0deg); }
+  95% { transform: rotate(1.5deg); }
+}
+
+.cat-ears {
+  transform-box: fill-box;
+  transform-origin: 60px 32px;
+}
+
+/* zzz drift */
+.zzz { animation: floaty 3s ease-in-out infinite; }
+@keyframes floaty {
+  0%, 100% { opacity: 0.4; transform: translateY(2px); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+.sparkle { animation: twinkle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: 98px 38px; }
+@keyframes twinkle {
+  0%, 100% { opacity: 0.4; transform: scale(0.85) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.1) rotate(20deg); }
+}
+.pop { animation: pop 0.9s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pop {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.12); }
+}
+.sweat { animation: drip 2.2s ease-in-out infinite; }
+@keyframes drip {
+  0% { opacity: 0; transform: translateY(-4px); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(8px); }
+}
+
+/* ---- mood modifiers ---- */
+.state-sleeping .cat-breathe { animation-duration: 5s; }
+.state-sleeping .cat-tail { animation-duration: 6s; }
+.state-sleeping .cat-ears { transform: translateY(3px) scaleY(0.85); }
+
+.state-playing .cat-tail { animation-duration: 0.9s; }
+.state-curious .cat-tail { animation-duration: 1.8s; }
+.state-active .cat-tail { animation-duration: 1.2s; }
+
+.state-alert .cat-tail { animation-duration: 0.7s; }
+.state-alert .cat-ears { transform: translateY(-3px) scaleY(1.12); }
+.state-alert .cat-breathe { animation-duration: 1.8s; }
+
+.state-angry .cat-tail { animation-duration: 0.45s; }
+.state-angry .cat-ears { transform: scaleY(0.55) translateY(10px); }
+.state-angry .cheek { fill: rgba(220, 90, 90, 0.28); }
+.state-angry .cat-breathe { animation-duration: 1.2s; }
+.state-angry { --fur: #f3ddb6; }
+
+.state-exhausted .cat-breathe { animation-duration: 2.2s; }
+.state-exhausted .cat-tail { animation-duration: 4.5s; }
+.state-exhausted .cat-ears { transform: translateY(4px) scaleY(0.7); }
+.state-exhausted .cheek { fill: rgba(120, 160, 200, 0.22); }
+.state-exhausted { --fur: #efe0bd; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cat * { animation: none !important; }
+}

@@ -1,0 +1,48 @@
+/* Cat window — fully transparent, no chrome. */
+.stage {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: visible;
+}
+
+.cat-wrap {
+  width: 128px;
+  height: 128px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
+}
+
+.tooltip {
+  position: fixed;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(28, 24, 20, 0.92);
+  color: #fdf6e8;
+  font: 500 11px/1.4 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+.tt-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+  color: #ffd98a;
+}
+.tt-row {
+  font-variant-numeric: tabular-nums;
+}
+.tt-row.dim {
+  opacity: 0.7;
+  font-size: 10px;
+}
