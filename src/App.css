@@ -1,11 +1,10 @@
-/* Cat window — fully transparent, no chrome. */
+/* Cat window — a full-screen, transparent, click-through overlay. The cat is
+   moved *inside* it via transforms on `.cat-container`; the window never moves
+   in Roam mode. */
 .stage {
   position: relative;
   width: 100vw;
   height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: transparent;
   cursor: default;
   user-select: none;
@@ -13,16 +12,38 @@
   overflow: visible;
 }
 
-.cat-wrap {
+/* The moving element. Its base sits at the window origin (0,0); Rust-driven
+   `translate3d` slides it around, CSS-tweened for buttery 60fps motion.
+   `transform` is set imperatively from App.tsx — never list it here or in JSX
+   style, or React re-renders would stomp an in-flight transition. */
+.cat-container {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 128px;
   height: 128px;
+  will-change: transform;
+  opacity: 0; /* hidden until first placement to avoid a flash at (0,0) */
+  transition: opacity 0.2s ease;
+}
+.cat-container.placed {
+  opacity: 1;
+}
+
+.cat-flip {
+  width: 100%;
+  height: 100%;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
   transition: filter 0.2s ease;
+}
+/* Face the travel direction. */
+.cat-flip.flip {
+  transform: scaleX(-1);
 }
 
 /* Grab mode (⌘⇧C): the cat is interactive. Give it a soft glow + a pulsing
    ring so it's obvious the window will now catch clicks and drags. */
-.stage.grab .cat-wrap {
+.stage.grab .cat-flip {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18))
     drop-shadow(0 0 10px rgba(255, 200, 90, 0.85));
 }
@@ -54,14 +75,16 @@
   }
 }
 
-/* Anchored to the top-center of the (transparent) window, wrapping and
-   width-capped so the text is never clipped by the window edge. */
+/* Stats tooltip — floats just above the cat (Grab mode only, so there's always
+   room above it in the shrunken window). */
 .tooltip {
   position: absolute;
-  top: 6px;
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  max-width: calc(100% - 20px);
+  margin-bottom: 8px;
+  width: max-content;
+  max-width: 220px;
   padding: 6px 10px;
   border-radius: 10px;
   background: rgba(28, 24, 20, 0.92);
@@ -74,13 +97,16 @@
   z-index: 10;
 }
 
-/* Mode-switch badge: a small pill just under the top edge. */
+/* Mode-switch badge + first-run hint ride *below* the cat, so they never clip
+   off the top of the screen when the cat is parked near the top edge. */
 .badge {
   position: absolute;
-  top: 8px;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
-  max-width: calc(100% - 20px);
+  margin-top: 8px;
+  width: max-content;
+  max-width: 240px;
   padding: 5px 12px;
   border-radius: 999px;
   background: rgba(28, 24, 20, 0.92);
@@ -93,13 +119,14 @@
   z-index: 11;
 }
 
-/* First-run hint: wider, wraps, sits under the top edge with breathing room. */
 .hint {
   position: absolute;
-  top: 6px;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
-  max-width: calc(100% - 12px);
+  margin-top: 8px;
+  width: max-content;
+  max-width: 260px;
   padding: 8px 12px;
   border-radius: 12px;
   background: rgba(28, 24, 20, 0.95);

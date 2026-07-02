@@ -188,6 +188,80 @@
 .state-exhausted .cheek { fill: rgba(120, 160, 200, 0.22); }
 .state-exhausted { --fur: #efe0bd; }
 
+/* =========================================================
+   Gait animations — layered on top while the cat is moving
+   (driven by the gait-<walk|run|jitter> class from App.tsx)
+   ========================================================= */
+.paw {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ---- walking ---- */
+.cat.gait-walk .cat-breathe {
+  animation: bob 0.34s ease-in-out infinite;
+}
+.cat.gait-walk .paw-l {
+  animation: step-a 0.34s ease-in-out infinite;
+}
+.cat.gait-walk .paw-r {
+  animation: step-b 0.34s ease-in-out infinite;
+}
+.cat.gait-walk .cat-tail {
+  animation-duration: 0.55s !important;
+}
+
+/* ---- running: same rig, faster + bigger ---- */
+.cat.gait-run .cat-breathe {
+  animation: bob-big 0.2s ease-in-out infinite;
+}
+.cat.gait-run .paw-l {
+  animation: step-a-big 0.2s ease-in-out infinite;
+}
+.cat.gait-run .paw-r {
+  animation: step-b-big 0.2s ease-in-out infinite;
+}
+.cat.gait-run .cat-tail {
+  animation-duration: 0.35s !important;
+}
+
+/* ---- jittering (angry, in place): quick side-to-side shudder ---- */
+.cat.gait-jitter .cat-breathe {
+  animation: shudder 0.14s linear infinite;
+}
+.cat.gait-jitter .cat-tail {
+  animation-duration: 0.3s !important;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes bob-big {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-5px) scaleY(1.02); }
+}
+@keyframes step-a {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes step-b {
+  0%, 100% { transform: translateY(-4px); }
+  50% { transform: translateY(0); }
+}
+@keyframes step-a-big {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes step-b-big {
+  0%, 100% { transform: translateY(-6px); }
+  50% { transform: translateY(0); }
+}
+@keyframes shudder {
+  0%, 100% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cat * { animation: none !important; }
 }

@@ -31,10 +31,13 @@ to drag, click, or configure it.
     drag to move it, click to open details. A glowing ring marks Grab mode.
   - Toggle with **⌘⇧C** or the tray. Roam ↔ Grab flips instantly; a short badge
     confirms the switch.
-- **Screen wandering** — in Roam mode the cat strolls between random nearby spots
-  with smooth easing, clamped to the active monitor's work area (never behind the
-  menu bar or dock). How lively it wanders tracks its mood: `playing` bounces
-  around, `angry` fidgets in place, `exhausted` barely twitches, `sleeping`
+- **Screen wandering** — in Roam mode the cat window is a full-screen,
+  transparent, click-through **overlay**, and the cat strolls around *inside* it
+  via GPU-accelerated CSS transforms (60fps, no janky native window moves). It
+  **walks / runs** with an animated gait, flips to face its heading, and is
+  clamped to the active monitor's work area (never behind the menu bar or dock).
+  How lively it wanders tracks its mood: `playing` strolls, `active` dashes
+  (running), `angry` fidgets in place, `exhausted` barely shuffles, `sleeping`
   stays put.
 - **Menu-bar app** — no dock icon; control it from the tray.
 
@@ -163,17 +166,23 @@ clawd/
 └─ src-tauri/                # Rust backend
    ├─ src/
    │  ├─ lib.rs              # window setup, Roam/Grab mode, hotkey, poller
-   │  ├─ roam.rs             # screen-wander animation loop
+   │  ├─ roam.rs             # wander scheduler (emits cat-wander events)
    │  ├─ usage.rs            # ccusage-style aggregation
    │  └─ tray.rs             # menu-bar tray (mode radio + status)
    ├─ tauri.conf.json        # cat + details window config
    └─ capabilities/default.json
 ```
 
-## Known limitations (v0.1)
+## Known limitations
 
-- **Cat art is a hand-drawn draft.** Playing / alert / angry read clearly; the
-  other four states are lightweight variations. Refinement welcome.
+- **Cat art + gaits are a hand-drawn draft.** Playing / alert / angry read
+  clearly; the other four states are lightweight variations. The walk / run /
+  jitter gaits are an initial pass (body bob + alternating paws + tail) — good
+  enough to read as motion, but ripe for refinement.
+- **Primary monitor only.** The overlay sizes to the primary monitor's work
+  area; the cat won't wander onto secondary displays yet. Multi-monitor support
+  is a future improvement (track the monitor under the cat and re-home the
+  overlay on display changes).
 - The log scan re-reads all files every 30 s — fine for typical histories, but
   not incremental. Large histories could be cached by mtime later.
 - macOS only. Windows/Linux would need a different global-shortcut strategy.
@@ -181,6 +190,20 @@ clawd/
 
 ## Changelog
 
+- **v0.3.0** — **Full-screen overlay + smooth walking/running animation.**
+  Reworked wandering from the ground up. The cat window is now a screen-sized,
+  transparent, **click-through overlay** and the cat moves *within* it via
+  GPU-accelerated CSS `translate3d` transitions — no more nudging the native
+  window every frame (which never animated smoothly on macOS). Rust
+  (`roam.rs`) is now just a scheduler: every few seconds it emits a `cat-wander`
+  event (target, duration, direction, gait) and the browser tweens there at
+  60fps. Added **walk / run / jitter** SVG gaits (body bob, alternating paws,
+  livelier tail) plus **direction flip** so the cat faces where it's going,
+  scaled to mood. Grab mode shrinks the overlay back down around the frozen cat
+  (interactive again), then re-expands to full-screen on return — click-through
+  is asserted before every resize so **other windows are never blocked** (0
+  interference preserved). Tooltip / badge / first-run hint now ride with the
+  cat. Primary monitor only for now (see limitations).
 - **v0.2.0** — **Roam ↔ Grab modes + screen wandering.** Replaced the old
   "pin" concept with two clear states: **Roam** (default — click-through and the
   cat auto-wanders the screen) and **Grab** (interactive and frozen for

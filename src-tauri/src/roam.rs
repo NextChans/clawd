@@ -1,28 +1,29 @@
-//! Roam mode: the cat wanders the screen on its own.
+//! Roam mode: the cat wanders inside the full-screen overlay on its own.
 //!
-//! A single background thread ticks a smooth easing animation between random
-//! targets. It only moves while the app is in Roam mode (click-through); Grab
-//! mode freezes it instantly so the user can drag/click. The wander cadence and
-//! step size scale with the cat's current mood (`CatState`), which the frontend
-//! keeps up to date via the `set_cat_state` command.
+//! Unlike the old design (which nudged the native window every frame — janky on
+//! macOS), the window is now a fixed full-screen overlay and the cat is a small
+//! element moved with CSS transforms. So this thread is a pure *scheduler*: every
+//! few seconds it picks a new target and emits a `cat-wander` event, and the
+//! frontend tweens there with a GPU-accelerated CSS transition. No per-frame IPC.
 //!
-//! Everything here runs off the main thread. Tauri window methods
-//! (`set_position`, `current_monitor`, …) proxy to the event loop, so they're
-//! safe to call from a plain `std::thread`.
+//! The cadence, hop distance, travel time, and gait (walk / run / jitter) all
+//! scale with the cat's current mood (`CatState`), which the frontend keeps up to
+//! date via `set_cat_state`. Grab mode freezes everything.
+//!
+//! Everything runs off the main thread; Tauri window methods proxy to the event
+//! loop, so they're safe to call from a plain `std::thread`.
 
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::AppState;
+use crate::{AppState, WanderEvent, CAT_SIZE, WANDER_MARGIN};
 
-/// Frame time while an easing animation is in flight (~60 fps). Between hops we
-/// poll much more slowly to stay off the CPU.
-const FRAME_MS: u64 = 16;
-const IDLE_POLL_MS: u64 = 200;
+/// Poll cadence. We only schedule hops (not animate), so a lazy tick is plenty.
+const TICK_MS: u64 = 200;
 
-/// Grace period before the first hop, and after returning from Grab mode, so
-/// the cat doesn't lurch the instant it's placed or released.
+/// Grace before the first hop, and after returning from Grab mode, so the cat
+/// doesn't lurch the instant it's placed or released.
 const GRACE: Duration = Duration::from_millis(1500);
 
 /// A tiny self-contained xorshift PRNG — avoids pulling in the `rand` crate.
@@ -60,156 +61,170 @@ impl Rng {
 
 /// How lively the wander is, per mood.
 struct HopParams {
-    /// Base seconds between the *start* of one hop and the next.
-    interval: f64,
-    /// Step distance range in physical px.
+    /// Idle pause between hops, in seconds (range).
+    pause: (f64, f64),
+    /// Hop distance as a fraction of the shorter screen dimension (range).
     dist: (f64, f64),
-    /// Per-hop travel duration range in ms.
+    /// Travel time per hop, in ms (range).
     dur: (f64, f64),
+    /// Which SVG gait the frontend plays while moving.
+    gait: &'static str,
+    /// Restless twitch instead of a directed hop (angry only).
+    jitter: bool,
 }
 
-/// Map a `CatState` name to wander parameters. `None` means "hold still".
+/// Map a `CatState` to wander parameters. `None` means "hold still".
 fn params(state: &str) -> Option<HopParams> {
     Some(match state {
         // Deep rest — don't move at all.
         "sleeping" => return None,
-        // Happy and lively: big, frequent hops.
-        "playing" => HopParams { interval: 10.0, dist: (100.0, 300.0), dur: (400.0, 1200.0) },
-        "curious" => HopParams { interval: 12.0, dist: (80.0, 250.0), dur: (500.0, 1100.0) },
-        "active" => HopParams { interval: 8.0, dist: (100.0, 250.0), dur: (400.0, 1000.0) },
-        // On edge: small, infrequent shivers.
-        "alert" => HopParams { interval: 15.0, dist: (20.0, 40.0), dur: (300.0, 600.0) },
-        // Agitated: tiny, restless, frequent fidgets.
-        "angry" => HopParams { interval: 5.0, dist: (15.0, 30.0), dur: (200.0, 400.0) },
-        // Wiped out: barely twitches.
-        "exhausted" => HopParams { interval: 30.0, dist: (10.0, 20.0), dur: (600.0, 1200.0) },
+        // Happy and lively: roomy, unhurried strolls.
+        "playing" => HopParams {
+            pause: (2.5, 6.0),
+            dist: (0.10, 0.35),
+            dur: (1400.0, 3200.0),
+            gait: "walk",
+            jitter: false,
+        },
+        "curious" => HopParams {
+            pause: (3.5, 7.0),
+            dist: (0.06, 0.22),
+            dur: (1500.0, 3000.0),
+            gait: "walk",
+            jitter: false,
+        },
+        // Busy: quick dashes across the screen.
+        "active" => HopParams {
+            pause: (1.5, 3.5),
+            dist: (0.15, 0.45),
+            dur: (800.0, 1600.0),
+            gait: "run",
+            jitter: false,
+        },
+        // On edge: small, careful, infrequent steps.
+        "alert" => HopParams {
+            pause: (5.0, 9.0),
+            dist: (0.03, 0.09),
+            dur: (700.0, 1400.0),
+            gait: "walk",
+            jitter: false,
+        },
+        // Agitated: restless fidgeting in place.
+        "angry" => HopParams {
+            pause: (0.4, 1.1),
+            dist: (0.0, 0.0),
+            dur: (150.0, 320.0),
+            gait: "jitter",
+            jitter: true,
+        },
+        // Wiped out: rare, slow shuffles.
+        "exhausted" => HopParams {
+            pause: (8.0, 14.0),
+            dist: (0.02, 0.09),
+            dur: (2200.0, 4200.0),
+            gait: "walk",
+            jitter: false,
+        },
         // Anything unknown behaves like `curious`.
-        _ => HopParams { interval: 12.0, dist: (80.0, 250.0), dur: (500.0, 1100.0) },
+        _ => HopParams {
+            pause: (3.5, 7.0),
+            dist: (0.06, 0.22),
+            dur: (1500.0, 3000.0),
+            gait: "walk",
+            jitter: false,
+        },
     })
-}
-
-/// Cubic ease-in-out.
-fn ease(t: f64) -> f64 {
-    if t < 0.5 {
-        4.0 * t * t * t
-    } else {
-        let f = -2.0 * t + 2.0;
-        1.0 - f * f * f / 2.0
-    }
-}
-
-struct Anim {
-    from: (f64, f64),
-    to: (f64, f64),
-    start: Instant,
-    dur: Duration,
 }
 
 /// Launch the wander loop. Cheap when idle or grabbed.
 pub fn spawn(app: AppHandle) {
     std::thread::spawn(move || {
         let mut rng = Rng::new();
-        let mut anim: Option<Anim> = None;
         // When the next hop may begin. `None` => (re)arm with a grace delay.
         let mut next_hop: Option<Instant> = None;
 
         loop {
-            let animating = tick(&app, &mut rng, &mut anim, &mut next_hop);
-            let dt = if animating { FRAME_MS } else { IDLE_POLL_MS };
-            std::thread::sleep(Duration::from_millis(dt));
+            tick(&app, &mut rng, &mut next_hop);
+            std::thread::sleep(Duration::from_millis(TICK_MS));
         }
     });
 }
 
-/// One iteration. Returns `true` while an animation is in flight (so the caller
-/// polls at frame rate instead of the idle cadence).
-fn tick(
-    app: &AppHandle,
-    rng: &mut Rng,
-    anim: &mut Option<Anim>,
-    next_hop: &mut Option<Instant>,
-) -> bool {
-    // Grab mode (or no state yet) → freeze and re-arm the grace timer.
-    if !app.state::<AppState>().is_roam() {
-        *anim = None;
+/// One scheduler iteration.
+fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
+    let state = app.state::<AppState>();
+
+    // Grab mode (or no window) → freeze and re-arm the grace timer.
+    if !state.is_roam() {
         *next_hop = None;
-        return false;
+        return;
     }
 
     let Some(win) = app.get_webview_window("cat") else {
-        return false;
+        return;
     };
 
-    // Advance an in-flight hop.
-    if let Some(a) = anim.as_ref() {
-        let dur = a.dur.as_secs_f64().max(0.001);
-        let t = (a.start.elapsed().as_secs_f64() / dur).clamp(0.0, 1.0);
-        let e = ease(t);
-        let x = a.from.0 + (a.to.0 - a.from.0) * e;
-        let y = a.from.1 + (a.to.1 - a.from.1) * e;
-        let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
-        // macOS Sequoia+ can drop click-through after a move; re-assert it.
-        let _ = win.set_ignore_cursor_events(true);
-        if t >= 1.0 {
-            *anim = None;
-        }
-        return true;
-    }
+    // macOS Sequoia+ can silently drop click-through; cheaply re-assert it while
+    // roaming so a stray reset never blocks clicks on the full-screen overlay.
+    let _ = win.set_ignore_cursor_events(true);
 
     let now = Instant::now();
-
-    // Between hops: honour the scheduled start (and the startup / post-grab
-    // grace period when `next_hop` was just re-armed).
     match *next_hop {
-        Some(at) if now < at => return false,
+        Some(at) if now < at => return,
         None => {
             *next_hop = Some(now + GRACE);
-            return false;
+            return;
         }
         _ => {}
     }
 
-    let cat_state = app.state::<AppState>().cat_state();
-    let Some(p) = params(&cat_state) else {
-        // Sleeping: check back in a couple of seconds.
+    let Some(p) = params(&state.cat_state()) else {
+        // Sleeping: check back shortly.
         *next_hop = Some(now + Duration::from_secs(2));
-        return false;
+        return;
     };
 
-    let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
-        return false;
+    let Some(wa) = crate::workarea(&win) else {
+        return;
+    };
+    let (w_log, h_log) = wa.logical_size();
+    let max_x = (w_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+    let max_y = (h_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+
+    let (px, py) = state.cat_pos().unwrap_or_else(|| crate::default_cat_pos(&wa));
+
+    // Pick a target: a directed hop, or a small in-place twitch (angry).
+    let (tx, ty) = if p.jitter {
+        (
+            (px + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_x),
+            (py + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_y),
+        )
+    } else {
+        let base = w_log.min(h_log);
+        let dist = rng.range(p.dist.0, p.dist.1) * base;
+        let angle = rng.range(0.0, std::f64::consts::TAU);
+        (
+            (px + angle.cos() * dist).clamp(WANDER_MARGIN, max_x),
+            (py + angle.sin() * dist).clamp(WANDER_MARGIN, max_y),
+        )
     };
 
-    // Clamp the target into the active monitor's work area (menu bar / dock
-    // excluded) so the cat never wanders behind them or off-screen.
-    let (min_x, min_y, max_x, max_y) = match win.current_monitor() {
-        Ok(Some(m)) => {
-            let wa = m.work_area();
-            let ax = wa.position.x;
-            let ay = wa.position.y;
-            let right = ax + wa.size.width as i32 - size.width as i32;
-            let bottom = ay + wa.size.height as i32 - size.height as i32;
-            (ax, ay, right.max(ax), bottom.max(ay))
-        }
-        _ => (0, 0, (pos.x).max(0), (pos.y).max(0)),
-    };
+    let dur_ms = rng.range(p.dur.0, p.dur.1) as u64;
+    let direction = if tx < px { "left" } else { "right" };
 
-    // Pick a random direction + distance from the current spot.
-    let angle = rng.range(0.0, std::f64::consts::TAU);
-    let dist = rng.range(p.dist.0, p.dist.1);
-    let tx = (pos.x as f64 + angle.cos() * dist).clamp(min_x as f64, max_x as f64);
-    let ty = (pos.y as f64 + angle.sin() * dist).clamp(min_y as f64, max_y as f64);
+    let _ = app.emit(
+        "cat-wander",
+        WanderEvent {
+            x: tx,
+            y: ty,
+            duration_ms: dur_ms,
+            direction: direction.to_string(),
+            gait: p.gait.to_string(),
+        },
+    );
+    state.set_cat_pos(tx, ty);
 
-    let dur_ms = rng.range(p.dur.0, p.dur.1);
-    *anim = Some(Anim {
-        from: (pos.x as f64, pos.y as f64),
-        to: (tx, ty),
-        start: Instant::now(),
-        dur: Duration::from_millis(dur_ms as u64),
-    });
-
-    // Schedule the next hop relative to this one's start, with ±20% jitter.
-    let jitter = rng.range(0.8, 1.2);
-    *next_hop = Some(now + Duration::from_secs_f64(p.interval * jitter));
-    true
+    // Next hop = travel time + a mood-dependent pause (±20% jitter).
+    let pause = rng.range(p.pause.0, p.pause.1) * rng.range(0.8, 1.2);
+    *next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(pause));
 }

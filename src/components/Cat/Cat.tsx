@@ -1,6 +1,9 @@
 import { CatState } from '../../types';
 import './cat.css';
 
+/** How the cat is moving right now — drives the walk/run/jitter animations. */
+export type Gait = 'idle' | 'walk' | 'run' | 'jitter';
+
 /**
  * Hand-drawn-ish pastel cat, one SVG parametrized by mood. Base anatomy (body,
  * head, ears, nose, whiskers, tail) is shared; eyes / brows / mouth / a small
@@ -8,13 +11,18 @@ import './cat.css';
  * breathing, tail wag, whisker twitch — is CSS in cat.css, keyed off the
  * `state-<mood>` class so busier moods animate faster.
  *
+ * When it's on the move, the `gait-<walk|run|jitter>` class layers a body bob,
+ * alternating paw steps, and a livelier tail on top; `idle` falls back to the
+ * resting breathe/wag.
+ *
  * This is a first-draft doodle: playing / alert / angry read clearly; the other
- * four are recognizable variations on the same rig.
+ * four are recognizable variations on the same rig. The gait animations are
+ * likewise an initial pass.
  */
-export function Cat({ state }: { state: CatState }) {
+export function Cat({ state, gait = 'idle' }: { state: CatState; gait?: Gait }) {
   return (
     <svg
-      className={`cat state-${state}`}
+      className={`cat state-${state} gait-${gait}`}
       viewBox="0 0 120 134"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
@@ -34,9 +42,9 @@ export function Cat({ state }: { state: CatState }) {
           className="fur-line"
           d="M34,122 C28,86 40,72 60,72 C80,72 92,86 86,122 Z"
         />
-        {/* front paws */}
-        <ellipse className="fur-line" cx="49" cy="123" rx="9" ry="6" />
-        <ellipse className="fur-line" cx="71" cy="123" rx="9" ry="6" />
+        {/* front paws — step alternately while walking / running */}
+        <ellipse className="fur-line paw paw-l" cx="49" cy="123" rx="9" ry="6" />
+        <ellipse className="fur-line paw paw-r" cx="71" cy="123" rx="9" ry="6" />
 
         {/* ---- Ears ---- */}
         <g className="cat-ears">
