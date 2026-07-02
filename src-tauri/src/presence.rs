@@ -381,7 +381,16 @@ async fn run_room(
     for peer in &bootstrap {
         let _ = endpoint.add_node_addr(peer.clone());
     }
-    let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
+    // NodeIds we can (re-)dial to heal the room: the ticket's bootstrap peers
+    // plus every neighbor we later meet. The opener starts empty, so it used to
+    // be unable to re-dial a stalled link — only the joiner (which had the
+    // opener as bootstrap) could heal its side. That one-sidedness is the
+    // "joiner's cat vanishes on the host after ~10s while the host's cat stays
+    // fine on the joiner" bug: data flows opener→joiner, the joiner keeps
+    // receiving so it never re-dials, the reverse link stalls, and the opener
+    // had no one to re-dial. Remembering met neighbors lets *either* side
+    // re-dial (discovery_n0 resolves the NodeId → address).
+    let mut dial_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
     // Reconnect loop. We use `subscribe` (not `subscribe_and_join`) so we're
     // "in the room" immediately (🟡), broadcast right away, and flip to 🟢 as
@@ -391,7 +400,7 @@ async fn run_room(
     // vanishes ("appeared then disappeared").
     'outer: while running.load(Ordering::SeqCst) {
         on_status(false, 0);
-        let sub = match gossip.subscribe(topic, bootstrap_ids.clone()).await {
+        let sub = match gossip.subscribe(topic, dial_ids.clone()).await {
             Ok(s) => s,
             Err(_) => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
@@ -402,13 +411,13 @@ async fn run_room(
         let mut neighbors: usize = 0;
         on_status(true, neighbors);
 
-        // A joiner (non-empty bootstrap) re-dials the host to heal a stalled
-        // link; the opener can't (no address to dial) and waits for the joiner
-        // to come back. We key re-dial off *message freshness*, not the neighbor
-        // count: with no relay fallback a direct link can go silent while gossip
-        // still reports the neighbor up, so watching for received data catches
-        // the "🟢 but the cat vanished" case the neighbor count misses.
-        let can_redial = !bootstrap_ids.is_empty();
+        // Re-dial off *message freshness*, not the neighbor count: with no relay
+        // fallback a direct link can go silent while gossip still reports the
+        // neighbor up, so watching for received data catches the "🟢 but the cat
+        // vanished" case the neighbor count misses. Either side can re-dial once
+        // it knows a peer to dial — checked live (against `dial_ids`) so it
+        // activates the moment the opener first meets the joiner, not one
+        // re-subscribe later.
         let mut last_activity = Instant::now();
 
         let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
@@ -417,8 +426,8 @@ async fn run_room(
                 break 'outer;
             }
             // Heard nothing for too long → re-subscribe, which re-dials the
-            // bootstrap peer and refreshes the connection before we go stale.
-            if can_redial && last_activity.elapsed() > IROH_REDIAL_AFTER {
+            // known peers and refreshes the connection before we go stale.
+            if !dial_ids.is_empty() && last_activity.elapsed() > IROH_REDIAL_AFTER {
                 break;
             }
             tokio::select! {
@@ -438,9 +447,14 @@ async fn run_room(
                                 on_recv(payload);
                             }
                         }
-                        Ok(Some(Event::NeighborUp(_))) => {
+                        Ok(Some(Event::NeighborUp(id))) => {
                             neighbors += 1;
                             last_activity = Instant::now();
+                            // Remember this neighbor so we (even the opener) can
+                            // re-dial it if the link later stalls.
+                            if !dial_ids.contains(&id) {
+                                dial_ids.push(id);
+                            }
                             on_status(true, neighbors);
                             // Greet the new neighbor with our current state at
                             // once, so their cat shows up without waiting a tick.
