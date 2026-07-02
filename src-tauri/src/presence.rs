@@ -301,6 +301,10 @@ type OnRoom = Arc<dyn Fn(String) + Send + Sync>;
 /// room that isn't linking up across networks.
 type OnStatus = Arc<dyn Fn(bool, usize) + Send + Sync>;
 
+/// Called with a short human-readable diagnostic string (e.g. the assigned
+/// relay) so a stuck room can be debugged from the UI.
+type OnDebug = Arc<dyn Fn(String) + Send + Sync>;
+
 /// The async heart of the iroh transport: build endpoint + gossip, join/open
 /// the room, then broadcast our latest payload on a cadence while handing
 /// received payloads to `on_recv`, until `running` clears.
@@ -313,6 +317,7 @@ async fn run_room(
     on_recv: OnRecv,
     on_room: OnRoom,
     on_status: OnStatus,
+    on_debug: OnDebug,
 ) -> anyhow::Result<()> {
     // `discovery_n0` publishes our NodeId → address (incl. relay) to n0's DNS
     // and resolves peers the same way, so a joiner can reach the host across
@@ -344,6 +349,18 @@ async fn run_room(
         endpoint.home_relay().initialized(),
     )
     .await;
+
+    // Surface the relay we got — the decisive clue when a room won't link up
+    // across networks (no relay ⇒ that network is blocking it).
+    let relays = endpoint.home_relay().get();
+    if relays.is_empty() {
+        on_debug("릴레이 없음 — 이 네트워크가 릴레이를 막는 듯".to_string());
+    } else {
+        on_debug(format!(
+            "릴레이 {}",
+            relays.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(", ")
+        ));
+    }
 
     // Publish a shareable code that includes our own address, so joiners can
     // bootstrap off us even if the original host is gone.
@@ -443,7 +460,13 @@ impl IrohTransport {
         *self.local.lock().unwrap() = Some(payload);
     }
 
-    fn start(&mut self, on_recv: OnRecv, on_room: OnRoom, on_status: OnStatus) -> Result<(), String> {
+    fn start(
+        &mut self,
+        on_recv: OnRecv,
+        on_room: OnRoom,
+        on_status: OnStatus,
+        on_debug: OnDebug,
+    ) -> Result<(), String> {
         let secret: SecretKey = self.secret_hex.parse().map_err(|e| format!("bad key: {e}"))?;
         let room = match &self.room_code {
             Some(code) => Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?),
@@ -457,7 +480,9 @@ impl IrohTransport {
                 Ok(rt) => rt,
                 Err(_) => return,
             };
-            let _ = rt.block_on(run_room(secret, room, local, running, on_recv, on_room, on_status));
+            let _ = rt.block_on(run_room(
+                secret, room, local, running, on_recv, on_room, on_status, on_debug,
+            ));
         }));
         Ok(())
     }
@@ -618,7 +643,11 @@ impl Presence {
         let on_status: OnStatus = Arc::new(move |joined: bool, neighbors: usize| {
             let _ = app_status.emit("remote-status", (joined, neighbors));
         });
-        transport.start(on_recv, on_room, on_status)?;
+        let app_debug = app.clone();
+        let on_debug: OnDebug = Arc::new(move |msg: String| {
+            let _ = app_debug.emit("remote-debug", msg);
+        });
+        transport.start(on_recv, on_room, on_status, on_debug)?;
         *self.iroh.lock().unwrap() = Some(transport);
         self.iroh_on.store(true, Ordering::SeqCst);
         self.ensure_prune(app);

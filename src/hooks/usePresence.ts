@@ -111,6 +111,7 @@ export function useRemoteRoom(config: Config, state: CatState) {
   // Connection diagnostics: whether we've joined the room and to how many peers.
   const [joined, setJoined] = useState(false);
   const [neighbors, setNeighbors] = useState(0);
+  const [debug, setDebug] = useState('');
 
   useEffect(() => {
     const unCode = listen<string>('remote-room-code', (e) => setCode(e.payload));
@@ -118,9 +119,11 @@ export function useRemoteRoom(config: Config, state: CatState) {
       setJoined(e.payload[0]);
       setNeighbors(e.payload[1]);
     });
+    const unDebug = listen<string>('remote-debug', (e) => setDebug(e.payload));
     return () => {
       unCode.then((off) => off());
       unStatus.then((off) => off());
+      unDebug.then((off) => off());
     };
   }, []);
 
@@ -154,7 +157,8 @@ export function useRemoteRoom(config: Config, state: CatState) {
     setCode('');
     setJoined(false);
     setNeighbors(0);
+    setDebug('');
   }, []);
 
-  return { status, code, joined, neighbors, open, join, leave };
+  return { status, code, joined, neighbors, debug, open, join, leave };
 }
