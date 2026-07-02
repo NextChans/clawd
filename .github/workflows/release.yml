@@ -1,9 +1,20 @@
 name: Release
 
+# Two ways to release:
+#  - workflow_dispatch: trigger from the API/UI (no tag push needed). The job
+#    resolves the version (input, or package.json) and softprops creates the
+#    `v<version>` tag itself — so a release can be cut end-to-end without pushing
+#    a tag from a machine that can't (e.g. a sandbox where tag push is blocked).
+#  - push a `v*` tag: the classic path, still supported as a manual fallback.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 0.10.0 (defaults to package.json).'
+        required: false
 
 # The default GITHUB_TOKEN needs write access to create the release + upload assets.
 permissions:
@@ -14,6 +25,21 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Resolve the tag/version once, from whichever trigger fired. On a tag
+      # push it's the ref; on workflow_dispatch it's the input (or package.json).
+      - name: Resolve release tag
+        id: rel
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            V="${{ github.event.inputs.version }}"
+            [ -z "$V" ] && V="$(node -p "require('./package.json').version")"
+            TAG="v${V}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${TAG}"
 
       - uses: actions/setup-node@v4
         with:
@@ -57,6 +83,11 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
+          # Set the tag explicitly so this works on workflow_dispatch too (no
+          # git ref to infer from). softprops creates the tag at this commit if
+          # it doesn't already exist, so no tag push is required.
+          tag_name: ${{ steps.rel.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           # latest.json / the .app.tar.gz(.sig) only exist for signed builds;
           # softprops skips missing glob matches, so an unsigned release just
           # uploads the DMG.
