@@ -125,9 +125,10 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gaitTimer = useRef<number | null>(null);
   const flyRef = useRef<HTMLDivElement>(null);
-  // The cat's current x within the window, mirrored for peer cats so a visitor
-  // can drift over to play. Updated wherever we move the cat.
+  // The cat's current position within the window, mirrored for peer cats so a
+  // visitor can drift over to play. Updated wherever we move the cat.
   const catXRef = useRef(0);
+  const catYRef = useRef(0);
 
   // --- Movement primitives (imperative so React re-renders never clobber an
   // in-flight CSS transition; `transform` is never part of the JSX style). ---
@@ -144,6 +145,7 @@ export default function App() {
     el.style.transition = 'none';
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     catXRef.current = x;
+    catYRef.current = y;
     setPlaced(true);
     clearGaitTimer();
     setGait('idle');
@@ -158,6 +160,7 @@ export default function App() {
     el.style.transition = `transform ${ev.duration_ms}ms ease-in-out`;
     el.style.transform = `translate3d(${ev.x}px, ${ev.y}px, 0)`;
     catXRef.current = ev.x;
+    catYRef.current = ev.y;
     setDirection(ev.direction);
     setGait(ev.gait);
     setPlaced(true);
@@ -477,12 +480,12 @@ export default function App() {
       )}
 
       {/* Visiting peer cats (social mode, Roam only). Gated on the toggle so
-          nothing shows for the default local setup. `getSelfX`/`selfPlayful`
+          nothing shows for the default local setup. `getSelf`/`selfPlayful`
           let a visitor drift over to play when you're both relaxed. */}
       {!grab && config.networkEnabled && (
         <PeerCats
           peers={peers}
-          getSelfX={() => catXRef.current}
+          getSelf={() => ({ x: catXRef.current, y: catYRef.current })}
           selfPlayful={ACTIVITY_FOR_STATE[state] === 'light'}
         />
       )}

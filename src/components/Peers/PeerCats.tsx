@@ -6,30 +6,39 @@ import './peers.css';
 
 /** How long a "👋 nickname" greeting bubble shows after a peer first appears. */
 const GREET_MS = 3500;
-/** Horizontal gap (px) under which a peer counts as "next to" your cat. */
+/** Distance (px) under which a peer counts as "next to" your cat. */
 const PLAY_NEAR = 130;
 /** How long a shared-play ❤️ moment lingers. */
 const PLAY_MS = 2600;
+/** Keep-out inset from the window edges (roughly the peer sprite size). */
+const MARGIN = 16;
+const PEER_SIZE = 74;
+
+/** A screen point. */
+interface Pt {
+  x: number;
+  y: number;
+}
 
 /**
- * Visiting cats from clawd peers on the LAN, roaming the bottom band of the
- * overlay. Each shows the peer's coat + mood pose, a nickname, and a coarse
- * activity badge. Newly arrived cats wave hello; departures fade out.
+ * Visiting cats from clawd peers on the LAN. Each roams the whole overlay on
+ * its own — a view-local 2D wander, no positions sent over the wire — so a
+ * visitor feels as alive as your own cat. Shows the peer's coat + mood pose, a
+ * nickname, and a coarse activity badge. Newly arrived cats wave hello;
+ * departures fade out.
  *
- * Peers wander on their own (a view-local walk, no positions sent over the
- * wire). When both your cat and a visitor are in a playful mood, the visitor
- * drifts over to your cat, faces it, and a ❤️ pops — a lightweight "playing
- * together" beat. `getSelfX` reports your cat's current x; `selfPlayful` is
- * whether your cat is relaxed enough to play. Both optional (only App passes
- * them), so the component still renders fine without.
+ * When both your cat and a visitor are in a playful mood, the visitor drifts
+ * over to your cat, faces it, and a ❤️ pops. `getSelf` reports your cat's
+ * current position; `selfPlayful` whether it's relaxed enough to play. Both
+ * optional (only App passes them).
  */
 export function PeerCats({
   peers,
-  getSelfX,
+  getSelf,
   selfPlayful = false,
 }: {
   peers: Peer[];
-  getSelfX?: () => number;
+  getSelf?: () => Pt;
   selfPlayful?: boolean;
 }) {
   const seen = useRef<Set<string>>(new Set());
@@ -71,7 +80,7 @@ export function PeerCats({
               peer={p}
               index={i}
               greet={greeting.has(p.id)}
-              getSelfX={getSelfX}
+              getSelf={getSelf}
               selfPlayful={selfPlayful}
             />
           </motion.div>
@@ -85,25 +94,25 @@ function PeerCat({
   peer,
   index,
   greet,
-  getSelfX,
+  getSelf,
   selfPlayful,
 }: {
   peer: Peer;
   index: number;
   greet: boolean;
-  getSelfX?: () => number;
+  getSelf?: () => Pt;
   selfPlayful: boolean;
 }) {
   const moveRef = useRef<HTMLDivElement>(null);
-  const xRef = useRef(0);
+  const posRef = useRef<Pt>({ x: 0, y: 0 });
   const [gait, setGait] = useState<'idle' | 'walk'>('idle');
   const [flip, setFlip] = useState(false); // true = facing left
   const [playing, setPlaying] = useState(false);
 
-  // Keep the latest self-position getter / mood in refs so the long-lived
-  // wander loop reads fresh values without re-arming its timers each render.
-  const selfXFn = useRef(getSelfX);
-  selfXFn.current = getSelfX;
+  // Latest self getter / mood in refs so the long-lived wander loop reads fresh
+  // values without re-arming its timers each render.
+  const selfFn = useRef(getSelf);
+  selfFn.current = getSelf;
   const selfPlayfulRef = useRef(selfPlayful);
   selfPlayfulRef.current = selfPlayful;
 
@@ -113,13 +122,20 @@ function PeerCat({
     let restTimer = 0;
     let playTimer = 0;
 
-    const startX = 40 + index * 96;
-    xRef.current = startX;
+    // Spread starting spots out a bit by index.
+    const start = { x: 40 + (index % 5) * 120, y: 60 + (index % 3) * 90 };
+    posRef.current = start;
     const el = moveRef.current;
     if (el) {
       el.style.transition = 'none';
-      el.style.transform = `translateX(${startX}px)`;
+      el.style.transform = `translate3d(${start.x}px, ${start.y}px, 0)`;
     }
+
+    const bounds = () => ({
+      maxX: Math.max(MARGIN, window.innerWidth - PEER_SIZE - MARGIN),
+      maxY: Math.max(MARGIN, window.innerHeight - PEER_SIZE - MARGIN),
+    });
+    const clamp = (v: number, hi: number) => Math.min(hi, Math.max(MARGIN, v));
 
     const peerPlayful = () => peer.activity === 'light';
     const bothPlayful = () => peerPlayful() && selfPlayfulRef.current;
@@ -127,13 +143,13 @@ function PeerCat({
     const restRange = () => {
       switch (peer.activity) {
         case 'intense':
-          return [1200, 2600];
+          return [1000, 2400];
         case 'busy':
-          return [2200, 4200];
+          return [2000, 4000];
         case 'idle':
           return [7000, 13000];
         default:
-          return [3500, 8000];
+          return [3000, 7000];
       }
     };
 
@@ -141,32 +157,35 @@ function PeerCat({
       if (!alive) return;
       const node = moveRef.current;
       if (!node) return;
-      const band = Math.max(160, Math.min(window.innerWidth - 140, window.innerWidth * 0.72));
+      const { maxX, maxY } = bounds();
 
-      // When both are in the mood, half the time drift over to your cat to play.
-      const selfX = selfXFn.current?.();
-      const seek = bothPlayful() && selfX != null && Math.random() < 0.5;
-      const target = seek
-        ? Math.min(band, Math.max(0, selfX - 40 + (Math.random() * 40 - 20)))
-        : Math.random() * band;
+      // When both are relaxed, half the time drift over to your cat to play.
+      const self = selfFn.current?.();
+      const seek = bothPlayful() && self != null && Math.random() < 0.5;
+      const target: Pt = seek
+        ? {
+            x: clamp(self.x + (Math.random() * 60 - 30), maxX),
+            y: clamp(self.y + (Math.random() * 50 - 25), maxY),
+          }
+        : { x: MARGIN + Math.random() * (maxX - MARGIN), y: MARGIN + Math.random() * (maxY - MARGIN) };
 
-      const cur = xRef.current;
-      const dist = Math.abs(target - cur);
-      const dur = Math.max(900, dist * 7);
-      setFlip(target < cur);
+      const cur = posRef.current;
+      const dist = Math.hypot(target.x - cur.x, target.y - cur.y);
+      const dur = Math.max(900, dist * 6);
+      setFlip(target.x < cur.x);
       setGait('walk');
       void node.offsetWidth;
       node.style.transition = `transform ${dur}ms ease-in-out`;
-      node.style.transform = `translateX(${target}px)`;
-      xRef.current = target;
+      node.style.transform = `translate3d(${target.x}px, ${target.y}px, 0)`;
+      posRef.current = target;
 
       walkTimer = window.setTimeout(() => {
         setGait('idle');
 
-        // Arrived: if we're beside your cat and both are playful, share a beat.
-        const sx = selfXFn.current?.();
-        if (bothPlayful() && sx != null && Math.abs(xRef.current - sx) < PLAY_NEAR) {
-          setFlip(sx < xRef.current); // turn to face your cat
+        // Arrived: if we're beside your cat and both playful, share a beat.
+        const s = selfFn.current?.();
+        if (bothPlayful() && s != null && Math.hypot(posRef.current.x - s.x, posRef.current.y - s.y) < PLAY_NEAR) {
+          setFlip(s.x < posRef.current.x); // turn to face your cat
           setPlaying(true);
           playTimer = window.setTimeout(() => setPlaying(false), PLAY_MS);
           restTimer = window.setTimeout(wander, PLAY_MS + 400);
@@ -178,7 +197,7 @@ function PeerCat({
       }, dur);
     };
 
-    restTimer = window.setTimeout(wander, 700 + index * 500 + Math.random() * 2200);
+    restTimer = window.setTimeout(wander, 700 + index * 450 + Math.random() * 2000);
     return () => {
       alive = false;
       clearTimeout(walkTimer);
