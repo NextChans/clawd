@@ -80,11 +80,15 @@ pub(crate) struct SubEvent {
     pub duration_ms: u64,
 }
 
-/// A butterfly the cat chases. `x`/`y` is where it appears; it flutters to
-/// `target_x`/`target_y` over `duration_ms` (the cat is sent chasing via a
-/// parallel `cat-wander`). All coords are the cat window's logical px.
+/// A plaything the cat reacts to (butterfly / ball / yarn / bird). `x`/`y` is
+/// where it appears; it travels to `target_x`/`target_y` over `duration_ms` and
+/// the frontend layers a per-`kind` flourish on top (roll, sway, dip, flutter).
+/// The cat is usually sent after it via a parallel `cat-wander`. All coords are
+/// the cat window's logical px.
 #[derive(Clone, serde::Serialize)]
-pub(crate) struct ButterflyEvent {
+pub(crate) struct PlaythingEvent {
+    /// `"butterfly"` | `"ball"` | `"yarn"` | `"bird"`.
+    pub kind: String,
     pub x: f64,
     pub y: f64,
     pub target_x: f64,

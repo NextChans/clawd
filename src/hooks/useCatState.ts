@@ -27,7 +27,13 @@ export function classifyWithReason(usage: Usage, config: Config): StateReason {
     config.exhaustedTokenThreshold ?? DEFAULT_EXHAUSTED_TOKENS;
   const r = formatRate(rate);
 
-  if (!active && usage.idle_minutes > 30)
+  // At night the cat dozes off sooner: relax the sleep-idle threshold from 30m
+  // to 15m during 22:00–05:59 (local). Matches roam.rs's night wind-down.
+  const hour = new Date().getHours();
+  const isNight = hour >= 22 || hour < 6;
+  const sleepIdle = isNight ? 15 : 30;
+
+  if (!active && usage.idle_minutes > sleepIdle)
     return { state: 'sleeping', reason: `비활성 · 마지막 활동 ${Math.round(usage.idle_minutes)}분 전` };
   if (todayTokens > exhaustedThreshold && rate > high)
     return {

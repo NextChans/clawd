@@ -11,7 +11,7 @@
 }
 @media (prefers-color-scheme: dark) {
   .details { color: #efe7d8; background: #241f19; }
-  .d-card, .d-model-row, .d-thresholds { background: #2f2921 !important; }
+  .d-card, .d-model-row, .d-thresholds, .d-spark, .d-donut { background: #2f2921 !important; }
   .d-field input, .d-slider input { color: #efe7d8; }
 }
 
@@ -63,12 +63,87 @@
 .d-card-label { font-size: 10px; opacity: 0.6; }
 .d-card-tok { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 
+/* "vs. yesterday" delta under the 오늘 card. Increase = red (busier day),
+   decrease = green, no baseline / flat = neutral gray. */
+.d-delta {
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.d-delta.up { color: #d8574e; }
+.d-delta.down { color: #3fa06f; }
+.d-delta.neutral { color: inherit; opacity: 0.5; font-weight: 600; }
+
 .d-activity {
   font-size: 11px;
   opacity: 0.75;
   margin-bottom: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Hourly sparkline (today, per local hour). */
+.d-spark {
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px 6px;
+  margin-bottom: 12px;
+}
+.d-spark-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+.d-spark-peak { font-variant-numeric: tabular-nums; }
+.d-spark svg { display: block; }
+.d-spark-area { fill: rgba(232, 161, 58, 0.18); stroke: none; }
+.d-spark-line { stroke: #e8a13a; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.d-spark-now { stroke: rgba(120, 120, 120, 0.5); stroke-width: 1; stroke-dasharray: 2 2; }
+.d-spark-dot { fill: #e8a13a; stroke: #fff; stroke-width: 1; }
+
+/* Model donut (today, by model family). */
+.d-donut {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.d-donut svg { flex: none; }
+.d-donut-total {
+  fill: currentColor;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.d-donut-cap { fill: currentColor; font-size: 8px; opacity: 0.55; }
+.d-donut-legend {
+  flex: 1;
+  min-width: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.d-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.d-donut-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.d-donut-name { font-weight: 600; }
+.d-donut-pct { margin-left: auto; opacity: 0.85; }
+.d-donut-tok { width: 46px; text-align: right; opacity: 0.6; }
 
 .d-models { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
 .d-model-row {

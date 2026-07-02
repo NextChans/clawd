@@ -15,19 +15,23 @@
 
 use std::time::{Duration, Instant};
 
+use chrono::{Local, Timelike};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{AppState, ButterflyEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD, WANDER_MARGIN};
+use crate::{AppState, PlaythingEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD, WANDER_MARGIN};
 
 /// Poll cadence. We only schedule hops (not animate), so a lazy tick is plenty.
 const TICK_MS: u64 = 200;
 
-/// Yawn / stretch flourishes fire this often (seconds, range) while the cat is
-/// resting. Purely a scheduler timer — no polling, no extra thread.
-const SUB_EVENT_S: (f64, f64) = (30.0, 120.0);
+/// Micro-event flourishes (yawn / stretch / ear-wiggle / look-back / blink-hard)
+/// fire this often (seconds, range) while the cat is resting. Faster than the
+/// old yawn/stretch-only cadence so the resting cat feels more alive. The active
+/// time-of-day scales this (see [`sub_event_interval`]).
+const SUB_EVENT_S: (f64, f64) = (15.0, 60.0);
 
-/// Butterfly chases fire this often (seconds, range) in the playful moods.
-const BUTTERFLY_S: (f64, f64) = (60.0, 180.0);
+/// Plaything appearances (butterfly / ball / yarn / bird) fire this often
+/// (seconds, range) in the playful moods; time-of-day scales it.
+const PLAYTHING_S: (f64, f64) = (60.0, 180.0);
 
 /// Grace before the first hop, and after returning from Grab mode, so the cat
 /// doesn't lurch the instant it's placed or released.
@@ -94,6 +98,49 @@ impl Rng {
     /// Uniform in [lo, hi).
     fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + self.unit() * (hi - lo)
+    }
+
+    /// Weighted pick: returns the index into `weights` chosen with probability
+    /// proportional to its weight. Falls back to the last index on rounding slop.
+    fn weighted(&mut self, weights: &[f64]) -> usize {
+        let total: f64 = weights.iter().sum();
+        if total <= 0.0 {
+            return 0;
+        }
+        let mut r = self.unit() * total;
+        for (i, w) in weights.iter().enumerate() {
+            r -= w;
+            if r < 0.0 {
+                return i;
+            }
+        }
+        weights.len() - 1
+    }
+}
+
+/// Coarse local time-of-day, recomputed each tick. Drives how lively the
+/// resting flourishes and playthings are — the cat winds down at night, wakes up
+/// stretching in the morning, and plays more in the evening.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TimeOfDay {
+    /// 22:00–05:59 — winding down / asleep.
+    Night,
+    /// 06:00–09:59 — waking up (lots of stretching).
+    Morning,
+    /// 10:00–17:59 — baseline.
+    Daytime,
+    /// 18:00–21:59 — friskiest (more toys).
+    Evening,
+}
+
+/// Read the machine's local wall clock and bucket it. For this app "local" is
+/// the user's KST, matching how `usage.rs` buckets the day.
+fn time_of_day() -> TimeOfDay {
+    match Local::now().hour() {
+        22..=23 | 0..=5 => TimeOfDay::Night,
+        6..=9 => TimeOfDay::Morning,
+        10..=17 => TimeOfDay::Daytime,
+        _ => TimeOfDay::Evening,
     }
 }
 
@@ -178,10 +225,10 @@ fn params(state: &str) -> Option<HopParams> {
 struct Sched {
     /// When the next hop may begin. `None` => (re)arm with a grace delay.
     next_hop: Option<Instant>,
-    /// When the next yawn/stretch flourish may fire.
+    /// When the next micro-event flourish may fire.
     next_sub: Option<Instant>,
-    /// When the next butterfly chase may fire.
-    next_butterfly: Option<Instant>,
+    /// When the next plaything (butterfly / ball / yarn / bird) may appear.
+    next_plaything: Option<Instant>,
 }
 
 /// Launch the wander loop. Cheap when idle or grabbed.
@@ -191,8 +238,8 @@ pub fn spawn(app: AppHandle) {
         let mut sched = Sched {
             next_hop: None,
             next_sub: None,
-            // Don't pester the user with a butterfly the instant the app opens.
-            next_butterfly: Some(Instant::now() + Duration::from_secs(45)),
+            // Don't pester the user with a plaything the instant the app opens.
+            next_plaything: Some(Instant::now() + Duration::from_secs(45)),
         };
 
         loop {
@@ -202,29 +249,68 @@ pub fn spawn(app: AppHandle) {
     });
 }
 
-/// Fire a yawn/stretch flourish now and then, but only when the cat is resting
-/// (busy / agitated moods look wrong yawning). Re-arms its own timer each call;
+/// Micro-event interval, scaled by time-of-day: the cat twitches a touch more
+/// often at night/morning (winding down / waking up) than during the day.
+fn sub_event_interval(rng: &mut Rng, tod: TimeOfDay) -> f64 {
+    let base = rng.range(SUB_EVENT_S.0, SUB_EVENT_S.1);
+    let factor = match tod {
+        TimeOfDay::Night => 0.7,
+        TimeOfDay::Morning => 0.8,
+        _ => 1.0,
+    };
+    base * factor
+}
+
+/// Micro-event kinds and their play durations (ms). The frontend maps each kind
+/// to a CSS flourish (yawn/stretch have expressive sprites on cream; the three
+/// smaller twitches are CSS-only). Order matches the weight table below.
+const SUB_EVENTS: [(&str, u64); 5] = [
+    ("yawn", 1200),
+    ("stretch", 1500),
+    ("ear_wiggle", 400),
+    ("look_back", 500),
+    ("blink_hard", 200),
+];
+
+/// Pick a micro-event, biasing the mix by time-of-day: yawns/stretches at night,
+/// heavy stretching in the morning (the "just woke up" sequence).
+fn pick_sub_event(rng: &mut Rng, tod: TimeOfDay) -> (&'static str, u64) {
+    // Weights line up with SUB_EVENTS: yawn, stretch, ear_wiggle, look_back, blink_hard.
+    let mut w = [1.0, 1.0, 1.2, 1.0, 1.2];
+    match tod {
+        TimeOfDay::Night => {
+            w[0] += 1.6; // yawn
+            w[1] += 1.0; // stretch
+        }
+        TimeOfDay::Morning => {
+            w[1] += 3.0; // stretch, hard
+            w[0] += 0.4;
+        }
+        _ => {}
+    }
+    SUB_EVENTS[rng.weighted(&w)]
+}
+
+/// Fire a resting flourish now and then, but only when the cat is resting
+/// (busy / agitated moods look wrong twitching). Re-arms its own timer each call;
 /// arming happens lazily so the first flourish is always `SUB_EVENT_S` out.
 fn maybe_sub_event(app: &AppHandle, rng: &mut Rng, now: Instant, sched: &mut Sched, cat_state: &str) {
+    let tod = time_of_day();
     match sched.next_sub {
         None => {
-            sched.next_sub = Some(now + Duration::from_secs_f64(rng.range(SUB_EVENT_S.0, SUB_EVENT_S.1)));
+            sched.next_sub = Some(now + Duration::from_secs_f64(sub_event_interval(rng, tod)));
             return;
         }
         Some(at) if now < at => return,
         _ => {}
     }
     // Due: re-arm regardless, then emit only in a resting mood.
-    sched.next_sub = Some(now + Duration::from_secs_f64(rng.range(SUB_EVENT_S.0, SUB_EVENT_S.1)));
+    sched.next_sub = Some(now + Duration::from_secs_f64(sub_event_interval(rng, tod)));
     let resting = matches!(cat_state, "sleeping" | "exhausted" | "alert" | "curious" | "playing");
     if !resting {
         return;
     }
-    let (kind, duration_ms) = if rng.unit() < 0.5 {
-        ("yawn", 1200u64)
-    } else {
-        ("stretch", 1500u64)
-    };
+    let (kind, duration_ms) = pick_sub_event(rng, tod);
     let _ = app.emit(
         "cat-sub-event",
         SubEvent {
@@ -232,6 +318,151 @@ fn maybe_sub_event(app: &AppHandle, rng: &mut Rng, now: Instant, sched: &mut Sch
             duration_ms,
         },
     );
+}
+
+/// Plaything interval, scaled by time-of-day: friskier (more toys) in the
+/// evening, calmer in the morning.
+fn plaything_interval(rng: &mut Rng, tod: TimeOfDay) -> f64 {
+    let base = rng.range(PLAYTHING_S.0, PLAYTHING_S.1);
+    let factor = match tod {
+        TimeOfDay::Evening => 0.7,
+        TimeOfDay::Morning => 1.3,
+        TimeOfDay::Night => 1.2,
+        TimeOfDay::Daytime => 1.0,
+    };
+    base * factor
+}
+
+/// The four plaything kinds. Order matches the weight table in [`pick_plaything`].
+const PLAYTHINGS: [&str; 4] = ["butterfly", "ball", "yarn", "bird"];
+
+/// Pick which toy shows up, biased by time-of-day: fewer butterflies in the
+/// morning; birds a touch more likely in the morning/evening (dawn/dusk flights).
+fn pick_plaything(rng: &mut Rng, tod: TimeOfDay) -> &'static str {
+    // Weights: butterfly, ball, yarn, bird.
+    let mut w = [3.0, 3.0, 2.0, 2.0];
+    match tod {
+        TimeOfDay::Morning => {
+            w[0] -= 1.5; // fewer butterflies
+            w[3] += 1.0; // more birds
+        }
+        TimeOfDay::Evening => {
+            w[0] += 1.0; // butterflies love dusk
+            w[3] += 0.5;
+        }
+        _ => {}
+    }
+    PLAYTHINGS[rng.weighted(&w)]
+}
+
+/// A scheduled plaything: where the toy appears/goes, how long it lasts, and an
+/// optional `cat-wander` target (x, y, duration_ms, gait) so the cat reacts.
+struct PlayPlan {
+    item_x: f64,
+    item_y: f64,
+    item_tx: f64,
+    item_ty: f64,
+    dur: u64,
+    /// `Some((x, y, duration_ms, gait))` if the cat should move in response.
+    cat: Option<(f64, f64, u64, &'static str)>,
+}
+
+/// Build the appearance + chase plan for a plaything `kind`, given the cat's
+/// current position and the wander bounds. Per-kind motion patterns:
+///  - `butterfly`: flutters off on a random vector; the cat runs after it.
+///  - `ball`: rolls in a straight line across the screen; the cat chases it.
+///  - `yarn`: dangles just in front of the cat, which bats at it in place.
+///  - `bird`: swoops across the top and exits the far side (out of reach); the
+///    cat dashes toward the middle, but the bird gets away.
+#[allow(clippy::too_many_arguments)]
+fn plaything_plan(
+    kind: &str,
+    rng: &mut Rng,
+    px: f64,
+    py: f64,
+    w_log: f64,
+    h_log: f64,
+    max_x: f64,
+    max_y: f64,
+) -> PlayPlan {
+    let clamp_x = |x: f64| x.clamp(WANDER_MARGIN, max_x);
+    let clamp_y = |y: f64| y.clamp(WANDER_MARGIN, max_y);
+    // Ground props (ball) can sit below the usual wander margin.
+    let ground = |y: f64| y.clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+
+    match kind {
+        "ball" => {
+            let from_left = rng.unit() < 0.5;
+            let start_x = if from_left { WANDER_MARGIN } else { max_x };
+            let end_x = if from_left { max_x } else { WANDER_MARGIN };
+            let y = ground(py + CAT_SIZE * 0.45);
+            let dur = rng.range(1800.0, 2800.0) as u64;
+            PlayPlan {
+                item_x: start_x,
+                item_y: y,
+                item_tx: end_x,
+                item_ty: y,
+                dur,
+                // Chase the ball to where it ends up.
+                cat: Some((clamp_x(end_x), py, dur, "run")),
+            }
+        }
+        "yarn" => {
+            // Dangle to whichever side has more room, in front of the cat.
+            let side = if px < w_log * 0.5 { 1.0 } else { -1.0 };
+            let bx = clamp_x(px + CAT_SIZE * 0.55 * side);
+            let by = clamp_y(py + CAT_SIZE * 0.2);
+            let tx = clamp_x(bx + rng.range(-24.0, 24.0));
+            let ty = clamp_y(by + rng.range(-12.0, 24.0));
+            let dur = rng.range(1600.0, 2600.0) as u64;
+            // A small shuffle toward the yarn, then it bats (frontend pounce).
+            let cat_tx = clamp_x(px + CAT_SIZE * 0.18 * side);
+            PlayPlan {
+                item_x: bx,
+                item_y: by,
+                item_tx: tx,
+                item_ty: ty,
+                dur,
+                cat: Some((cat_tx, py, rng.range(400.0, 700.0) as u64, "walk")),
+            }
+        }
+        "bird" => {
+            let from_left = rng.unit() < 0.5;
+            let start_x = if from_left { WANDER_MARGIN } else { max_x };
+            let end_x = if from_left { max_x } else { WANDER_MARGIN };
+            let top_y = WANDER_MARGIN;
+            let dur = rng.range(2800.0, 4000.0) as u64;
+            // Dash toward the middle, following the fly-over — but it escapes.
+            let mid_x = clamp_x((start_x + end_x) / 2.0);
+            PlayPlan {
+                item_x: start_x,
+                item_y: top_y,
+                item_tx: end_x,
+                item_ty: top_y,
+                dur,
+                cat: Some((mid_x, py, rng.range(700.0, 1200.0) as u64, "run")),
+            }
+        }
+        // "butterfly" (and any unknown kind): flutter off on a random vector.
+        _ => {
+            let base = w_log.min(h_log);
+            let dist = rng.range(0.28, 0.5) * base;
+            let angle = rng.range(0.0, std::f64::consts::TAU);
+            let tx = clamp_x(px + angle.cos() * dist);
+            let ty = clamp_y(py + angle.sin() * dist);
+            let bx = clamp_x(px + CAT_SIZE * 0.5);
+            let by = clamp_y(py - CAT_SIZE * 0.1);
+            let dur = rng.range(2200.0, 3600.0) as u64;
+            PlayPlan {
+                item_x: bx,
+                item_y: by,
+                item_tx: tx,
+                item_ty: ty,
+                dur,
+                cat: Some((tx, ty, dur, "run")),
+            }
+        }
+    }
 }
 
 /// One scheduler iteration.
@@ -287,47 +518,50 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
 
     let (px, py) = state.cat_pos().unwrap_or_else(|| crate::default_cat_pos(&wa));
 
-    // Playful moods occasionally chase a butterfly instead of a plain hop. The
-    // butterfly appears just above the cat, flutters off to `target`, and the
-    // cat runs after it; the frontend fades the butterfly + plays a pounce when
-    // the flutter finishes (see App.tsx).
-    if matches!(cat_state.as_str(), "playing" | "curious")
-        && sched.next_butterfly.map_or(false, |t| now >= t)
+    // Playful moods occasionally spawn a plaything (butterfly / ball / yarn /
+    // bird) instead of a plain hop. Each kind has its own motion pattern and
+    // cat reaction (see `plaything_plan`); the frontend fades the toy + plays a
+    // pounce when it finishes (see App.tsx).
+    if matches!(cat_state.as_str(), "playing" | "curious" | "active")
+        && sched.next_plaything.map_or(false, |t| now >= t)
     {
-        let base = w_log.min(h_log);
-        let dist = rng.range(0.28, 0.5) * base;
-        let angle = rng.range(0.0, std::f64::consts::TAU);
-        let tx = (px + angle.cos() * dist).clamp(WANDER_MARGIN, max_x);
-        let ty = (py + angle.sin() * dist).clamp(WANDER_MARGIN, max_y);
-        let bx = (px + CAT_SIZE * 0.5).clamp(WANDER_MARGIN, max_x);
-        let by = (py - CAT_SIZE * 0.1).clamp(WANDER_MARGIN, max_y);
-        let dur_ms = rng.range(2200.0, 3600.0) as u64;
+        let tod = time_of_day();
+        let kind = pick_plaything(rng, tod);
+        let plan = plaything_plan(kind, rng, px, py, w_log, h_log, max_x, max_y);
+
         let _ = app.emit(
-            "cat-butterfly",
-            ButterflyEvent {
-                x: bx,
-                y: by,
-                target_x: tx,
-                target_y: ty,
-                duration_ms: dur_ms,
+            "cat-plaything",
+            PlaythingEvent {
+                kind: kind.to_string(),
+                x: plan.item_x,
+                y: plan.item_y,
+                target_x: plan.item_tx,
+                target_y: plan.item_ty,
+                duration_ms: plan.dur,
             },
         );
-        let direction = if tx < px { "left" } else { "right" };
-        let _ = app.emit(
-            "cat-wander",
-            WanderEvent {
-                x: tx,
-                y: ty,
-                duration_ms: dur_ms,
-                direction: direction.to_string(),
-                gait: "run".to_string(),
-            },
-        );
-        state.set_cat_pos(tx, ty);
-        sched.next_butterfly =
-            Some(now + Duration::from_secs_f64(rng.range(BUTTERFLY_S.0, BUTTERFLY_S.1)));
-        sched.next_hop =
-            Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(1.5, 3.0)));
+
+        if let Some((cx, cy, cdur, gait)) = plan.cat {
+            let direction = if cx < px { "left" } else { "right" };
+            let _ = app.emit(
+                "cat-wander",
+                WanderEvent {
+                    x: cx,
+                    y: cy,
+                    duration_ms: cdur,
+                    direction: direction.to_string(),
+                    gait: gait.to_string(),
+                },
+            );
+            state.set_cat_pos(cx, cy);
+            sched.next_hop = Some(
+                now + Duration::from_millis(cdur) + Duration::from_secs_f64(rng.range(1.5, 3.0)),
+            );
+        } else {
+            sched.next_hop = Some(now + Duration::from_millis(plan.dur));
+        }
+
+        sched.next_plaything = Some(now + Duration::from_secs_f64(plaything_interval(rng, tod)));
         return;
     }
 

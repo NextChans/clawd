@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { Cat } from './components/Cat/Cat';
+import { ModelDonut } from './components/Charts/ModelDonut';
+import { HourlySparkline } from './components/Charts/HourlySparkline';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
@@ -100,10 +102,18 @@ export default function Details() {
       {usage.error && <div className="d-error">⚠ {usage.error}</div>}
 
       <section className="d-cards">
-        <Stat label="오늘" tokens={usage.today_tokens} />
+        <Stat
+          label="오늘"
+          tokens={usage.today_tokens}
+          sub={<YesterdayDelta today={usage.today_tokens} yesterday={usage.yesterday_tokens} />}
+        />
         <Stat label="이번 주" tokens={usage.week_tokens} />
         <Stat label="이번 달" tokens={usage.month_tokens} />
       </section>
+
+      <HourlySparkline data={usage.today_hourly} />
+
+      <ModelDonut models={usage.models_today} />
 
       <div className="d-activity">
         rate {formatRate(usage.rate_per_min)} · 오늘 {formatTokens(usage.today_tokens)}
@@ -191,11 +201,40 @@ export default function Details() {
   );
 }
 
-function Stat({ label, tokens }: { label: string; tokens: number }) {
+function Stat({
+  label,
+  tokens,
+  sub,
+}: {
+  label: string;
+  tokens: number;
+  sub?: ReactNode;
+}) {
   return (
     <div className="d-card">
       <div className="d-card-label">{label}</div>
       <div className="d-card-tok">{formatTokens(tokens)}</div>
+      {sub}
+    </div>
+  );
+}
+
+/**
+ * "vs. yesterday" delta shown under the 오늘 card. Increase is red, decrease is
+ * green (this is an *activity* meter, not a bill — more work today reads "hot").
+ * A first-token day (no yesterday baseline) shows a neutral "신규" chip.
+ */
+function YesterdayDelta({ today, yesterday }: { today: number; yesterday: number }) {
+  if (yesterday <= 0) {
+    if (today <= 0) return null;
+    return <div className="d-delta neutral">어제 대비 신규</div>;
+  }
+  const pct = Math.round(((today - yesterday) / yesterday) * 100);
+  if (pct === 0) return <div className="d-delta neutral">어제와 비슷</div>;
+  const up = pct > 0;
+  return (
+    <div className={`d-delta ${up ? 'up' : 'down'}`}>
+      어제 대비 {up ? '▲' : '▼'} {Math.abs(pct)}%
     </div>
   );
 }

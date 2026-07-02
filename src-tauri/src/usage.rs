@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use chrono::{DateTime, Datelike, Duration, Local, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, Timelike, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use walkdir::WalkDir;
@@ -90,6 +90,14 @@ pub struct Usage {
     pub week_cost: f64,
     pub month_tokens: u64,
     pub month_cost: f64,
+
+    /// Total tokens for the *previous* calendar day (yesterday 00:00 → today
+    /// 00:00, local time). Drives the "vs. yesterday" delta in the details UI.
+    pub yesterday_tokens: u64,
+
+    /// Tokens bucketed by local hour of *today* (index 0 = 00:00–00:59 … 23 =
+    /// 23:00–23:59). Powers the hourly sparkline.
+    pub today_hourly: Vec<u64>,
 
     /// Epoch millis of the last activity, or null if no data was found.
     pub last_activity_ms: Option<i64>,
@@ -251,6 +259,8 @@ fn read_turns(path: &PathBuf, offset: u64, retain_cutoff: DateTime<Utc>) -> (Vec
 /// Scan every session file and aggregate into a [`Usage`] snapshot.
 pub fn collect() -> Usage {
     let mut out = Usage::default();
+    // Fixed 24-slot histogram (one bucket per local hour of today).
+    out.today_hourly = vec![0; 24];
 
     let dir = match claude_projects_dir() {
         Some(d) if d.is_dir() => d,
@@ -281,6 +291,7 @@ pub fn collect() -> Usage {
         .and_local_timezone(Local)
         .unwrap()
         .with_timezone(&Utc);
+    let yesterday_start = today_start - Duration::days(1);
     let now_utc = now.with_timezone(&Utc);
     let week_start = now_utc - Duration::days(7);
     let five_min = now_utc - Duration::minutes(5);
@@ -379,12 +390,20 @@ pub fn collect() -> Usage {
                 out.today_tokens += turn.total_tokens;
                 out.today_cost += turn.cost;
                 out.today_messages += 1;
+                // Bucket into the local-hour histogram for the sparkline.
+                let hour = ts.with_timezone(&Local).hour() as usize;
+                if let Some(slot) = out.today_hourly.get_mut(hour) {
+                    *slot += turn.total_tokens;
+                }
                 let m = models.entry(turn.model.clone()).or_insert_with(|| ModelUsage {
                     model: turn.model.clone(),
                     ..Default::default()
                 });
                 m.tokens += turn.total_tokens;
                 m.cost += turn.cost;
+            } else if ts >= yesterday_start {
+                // Strictly the previous calendar day (today branch took ≥today).
+                out.yesterday_tokens += turn.total_tokens;
             }
             if ts >= five_min {
                 out.tokens_last_5min += turn.total_tokens;

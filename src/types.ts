@@ -21,6 +21,11 @@ export interface Usage {
   month_tokens: number;
   month_cost: number;
 
+  /** Total tokens for the previous calendar day (local time). */
+  yesterday_tokens: number;
+  /** Tokens per local hour of today: index 0 = 00:00 … 23 = 23:00. */
+  today_hourly: number[];
+
   last_activity_ms: number | null;
   models_today: ModelUsage[];
   error: string | null;
@@ -38,6 +43,8 @@ export const EMPTY_USAGE: Usage = {
   week_cost: 0,
   month_tokens: 0,
   month_cost: 0,
+  yesterday_tokens: 0,
+  today_hourly: Array(24).fill(0),
   last_activity_ms: null,
   models_today: [],
   error: null,

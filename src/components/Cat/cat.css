@@ -385,3 +385,28 @@
   25% { transform: rotate(-3deg); }
   75% { transform: rotate(3deg); }
 }
+
+/* ---- micro-events (C2): quick, sprite-less twitches scheduled by roam.rs.
+   Applied to the rendered cat (PNG `.cat-img` or the vector fallback `.cat`)
+   inside the `.cat-fx` wrapper, so they layer over the resting breathing for a
+   beat and clear on their own. ---- */
+.cat-fx.ear_wiggle .cat-img,
+.cat-fx.ear_wiggle .cat { animation: earWiggle 0.4s ease; }
+.cat-fx.look_back .cat-img,
+.cat-fx.look_back .cat { animation: lookBack 0.5s ease; }
+.cat-fx.blink_hard .cat-img,
+.cat-fx.blink_hard .cat { animation: blinkHard 0.2s ease; }
+
+@keyframes earWiggle {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(3deg); }
+  60% { transform: rotate(-2deg); }
+}
+@keyframes lookBack {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(-1); }
+}
+@keyframes blinkHard {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.85); }
+}

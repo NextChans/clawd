@@ -4,6 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Cat, hasCatSprite } from './components/Cat/Cat';
 import { FurnitureBaseline, FurnitureKind } from './components/Furniture/Furniture';
+import { Butterfly } from './components/Playthings/Butterfly';
+import { Ball } from './components/Playthings/Ball';
+import { Yarn } from './components/Playthings/Yarn';
+import { Bird } from './components/Playthings/Bird';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
@@ -14,7 +18,11 @@ import './App.css';
 type Mode = 'roam' | 'grab';
 type Gait = 'idle' | 'walk' | 'run' | 'jitter';
 type Direction = 'left' | 'right';
-type SubEventKind = 'yawn' | 'stretch';
+/** Resting flourishes scheduled by Rust. `yawn`/`stretch` have expressive
+ * sprites (cream); the three smaller twitches are CSS-only (see App.css). */
+type SubEventKind = 'yawn' | 'stretch' | 'ear_wiggle' | 'look_back' | 'blink_hard';
+/** The four toys the cat reacts to (mirrors `roam.rs`'s `PLAYTHINGS`). */
+type PlaythingKind = 'butterfly' | 'ball' | 'yarn' | 'bird';
 
 /** Rust's `cat-wander` payload: tween the cat here over `duration_ms`. */
 interface WanderEvent {
@@ -34,16 +42,17 @@ interface SubEvent {
   kind: SubEventKind;
   duration_ms: number;
 }
-/** Rust's `cat-butterfly` payload: spawn a butterfly the cat chases. */
-interface ButterflyEvent {
+/** Rust's `cat-plaything` payload: spawn a toy the cat reacts to. */
+interface PlaythingEvent {
+  kind: PlaythingKind;
   x: number;
   y: number;
   target_x: number;
   target_y: number;
   duration_ms: number;
 }
-/** Live butterfly being animated on screen (frontend-only). */
-interface Butterfly extends ButterflyEvent {
+/** Live plaything being animated on screen (frontend-only). */
+interface Plaything extends PlaythingEvent {
   /** Bump on each spawn so the animation effect re-fires. */
   id: number;
 }
@@ -90,10 +99,10 @@ export default function App() {
   // --- "Alive" flourishes + interactions ---
   // Yawn / stretch class currently applied (cleared after its duration).
   const [subEvent, setSubEvent] = useState<SubEventKind | null>(null);
-  // Butterfly the cat is chasing, and a transient pounce on the catch.
-  const [butterfly, setButterfly] = useState<Butterfly | null>(null);
+  // Plaything the cat is reacting to, and a transient pounce on the catch.
+  const [plaything, setPlaything] = useState<Plaything | null>(null);
   const [pounce, setPounce] = useState(false);
-  // Brief "spooked" beat when a butterfly first appears (drives the startled pose).
+  // Brief "spooked" beat when a plaything first appears (drives the startled pose).
   const [startled, setStartled] = useState(false);
   // Grab-mode petting: mouse held down on the cat → purr.
   const [holding, setHolding] = useState(false);
@@ -244,14 +253,14 @@ export default function App() {
     };
   }, []);
 
-  // Butterfly chase: Rust sends where the butterfly appears + where it flutters
-  // (the cat is sent chasing via a parallel `cat-wander`). We just record it;
-  // the animation lives in the effect below.
+  // Plaything: Rust sends where the toy appears + where it travels (the cat is
+  // sent reacting via a parallel `cat-wander`). We just record it; the animation
+  // lives in the effect below.
   useEffect(() => {
     let seq = 0;
-    const un = listen<ButterflyEvent>('cat-butterfly', (e) => {
+    const un = listen<PlaythingEvent>('cat-plaything', (e) => {
       seq += 1;
-      setButterfly({ ...e.payload, id: seq });
+      setPlaything({ ...e.payload, id: seq });
     });
     return () => {
       un.then((off) => off());
@@ -281,11 +290,13 @@ export default function App() {
     };
   }, []);
 
-  // Drive the butterfly across the screen: snap to its start, flutter to the
-  // target over `duration_ms`, then fade it out and pop a pounce on the cat.
+  // Drive the plaything across the screen: snap to its start, glide to the
+  // target over `duration_ms`, then fade it out. The per-kind flourish (roll /
+  // sway / dip / flutter) rides on the inner element via CSS. On "catch" the cat
+  // pounces — except for the bird, which flies off out of reach.
   useEffect(() => {
-    if (!butterfly) return;
-    // A quick spooked beat as the butterfly pops in, before the chase begins.
+    if (!plaything) return;
+    // A quick spooked beat as the toy pops in, before the cat reacts.
     setStartled(true);
     const unspook = window.setTimeout(() => setStartled(false), 550);
     const el = flyRef.current;
@@ -294,23 +305,28 @@ export default function App() {
     }
     el.style.transition = 'none';
     el.style.opacity = '1';
-    el.style.transform = `translate3d(${butterfly.x}px, ${butterfly.y}px, 0)`;
+    el.style.transform = `translate3d(${plaything.x}px, ${plaything.y}px, 0)`;
     void el.offsetWidth; // commit the start before animating
-    el.style.transition = `transform ${butterfly.duration_ms}ms ease-in-out, opacity 0.35s ease`;
-    el.style.transform = `translate3d(${butterfly.target_x}px, ${butterfly.target_y}px, 0)`;
+    // Bird glides at a steady pace (linear) under its CSS dip; the others ease.
+    const ease = plaything.kind === 'bird' ? 'linear' : 'ease-in-out';
+    el.style.transition = `transform ${plaything.duration_ms}ms ${ease}, opacity 0.35s ease`;
+    el.style.transform = `translate3d(${plaything.target_x}px, ${plaything.target_y}px, 0)`;
 
+    const catchable = plaything.kind !== 'bird';
     const caught = window.setTimeout(() => {
       el.style.opacity = '0';
-      setPounce(true);
-      window.setTimeout(() => setPounce(false), 450);
-    }, butterfly.duration_ms);
-    const gone = window.setTimeout(() => setButterfly(null), butterfly.duration_ms + 400);
+      if (catchable) {
+        setPounce(true);
+        window.setTimeout(() => setPounce(false), 450);
+      }
+    }, plaything.duration_ms);
+    const gone = window.setTimeout(() => setPlaything(null), plaything.duration_ms + 400);
     return () => {
       clearTimeout(unspook);
       clearTimeout(caught);
       clearTimeout(gone);
     };
-  }, [butterfly]);
+  }, [plaything]);
 
   // Petting: releasing the mouse anywhere ends the purr (a drag hands the
   // pointer to the OS, so the container's own pointerup may never fire).
@@ -440,26 +456,27 @@ export default function App() {
           Rendered before the cat so the cat always sits in front of its props. */}
       {!grab && <FurnitureBaseline color={config.catColor} visibleKinds={visibleFurniture} />}
 
-      {/* Butterfly the cat chases (Roam only). Driven imperatively via flyRef. */}
-      {!grab && butterfly && (
-        <div ref={flyRef} className="butterfly" aria-hidden>
-          <svg viewBox="0 0 32 32" width="30" height="30">
-            <g className="bfly-wings">
-              <path
-                d="M16 16 C 9 4, 1 6, 4 15 C 1 24, 10 26, 16 16 Z"
-                fill="rgba(255,255,255,0.95)"
-                stroke="rgba(120,110,140,0.6)"
-                strokeWidth="1"
-              />
-              <path
-                d="M16 16 C 23 4, 31 6, 28 15 C 31 24, 22 26, 16 16 Z"
-                fill="rgba(255,255,255,0.95)"
-                stroke="rgba(120,110,140,0.6)"
-                strokeWidth="1"
-              />
-            </g>
-            <line x1="16" y1="10" x2="16" y2="22" stroke="rgba(90,80,110,0.8)" strokeWidth="1.6" />
-          </svg>
+      {/* Plaything the cat reacts to (Roam only). The outer element is glided
+          imperatively via flyRef; the inner element carries the per-kind CSS
+          flourish (roll / sway / dip / flutter). */}
+      {!grab && plaything && (
+        <div ref={flyRef} className="plaything" aria-hidden>
+          <div
+            className={`plaything-inner pt-${plaything.kind}${
+              plaything.kind === 'ball' && plaything.target_x < plaything.x ? ' rev' : ''
+            }`}
+            // The bird's dip runs once across the whole flight.
+            style={
+              plaything.kind === 'bird'
+                ? { animationDuration: `${plaything.duration_ms}ms` }
+                : undefined
+            }
+          >
+            {plaything.kind === 'butterfly' && <Butterfly />}
+            {plaything.kind === 'ball' && <Ball />}
+            {plaything.kind === 'yarn' && <Yarn />}
+            {plaything.kind === 'bird' && <Bird />}
+          </div>
         </div>
       )}
 
