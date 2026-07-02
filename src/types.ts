@@ -52,10 +52,22 @@ export interface Thresholds {
   veryHigh: number;
 }
 
+/** Selectable coat colors. `orange` / `gray` are tabbies (stripes shown). */
+export type CatColor = 'cream' | 'black' | 'orange' | 'gray' | 'white';
+
+export const CAT_COLORS: { id: CatColor; label: string; swatch: string }[] = [
+  { id: 'cream', label: '크림', swatch: '#f7e6c4' },
+  { id: 'black', label: '검정', swatch: '#35312f' },
+  { id: 'orange', label: '치즈', swatch: '#f3b877' },
+  { id: 'gray', label: '고등어', swatch: '#b8bdc1' },
+  { id: 'white', label: '흰둥이', swatch: '#fbf7f1' },
+];
+
 export interface Config {
   dailyBudget: number; // USD
   notifyEnabled: boolean;
   thresholds: Thresholds;
+  catColor: CatColor;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -67,6 +79,7 @@ export const DEFAULT_CONFIG: Config = {
     high: 150_000,
     veryHigh: 400_000,
   },
+  catColor: 'cream',
 };
 
 export type CatState =

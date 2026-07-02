@@ -190,18 +190,23 @@ clawd/
 
 ## Changelog
 
-- **v0.4.0** — **Side-view cat + tooltip auto-flip + tray title sync.**
-  Redrew the cat in **profile** (facing right, flips with `scaleX(-1)` when it
-  heads left) instead of the old head-on doodle that just mirrored. Six hand-
-  authored postures — `sit`, a shared walk/run standing rig, `sleep`, `alert`,
-  `angry`, `exhausted` — with gait animations that swing the legs in diagonal
-  pairs from the hip, bob the body, stream the tail back at a run, and puff it
-  for alert/angry. The **tooltip now auto-flips**: it measures the cat against
-  the (small, edge-clamped) grab window and hugs the near edge — or drops below
-  the cat — so it never clips off-window again (the old centered tooltip was
-  also fighting framer-motion over `transform`; it now fades only). The **tray
-  title** reliably reflects the mode (🐾 Roam / ✋ Grab) — macOS wouldn't clear a
-  `None` title, so the "✋" suffix used to stick after switching back to Roam.
+- **v0.4.0** — **New sticker-style cat + coat colors + tooltip auto-flip + tray
+  title sync.** Fully redrew the cat as a chunky, thick-line "sticker" — pastel
+  fills, big eyes, pink cheeks — with the **viewpoint chosen per pose** for the
+  most natural read: `sit` faces you (front view, mood-driven face), `walk`/`run`
+  are an elongated side profile sharing one rig, and `sleep` / `alert` / `angry`
+  / `exhausted` each get their own angle. Gait animations swing the legs in
+  diagonal pairs from the hip, bob the body, stream the tail back at a run, and
+  puff it for alert/angry; the profile flips with `scaleX(-1)` when heading left.
+  Added **5 coat colors** — cream, black, orange & gray tabbies (with a stripe
+  layer), and white — driven by CSS custom properties and switchable from a new
+  swatch picker in the details window (persists in config, live-syncs to the cat
+  window). The **tooltip now auto-flips**: it measures the cat against the
+  (small, edge-clamped) grab window and hugs the near edge — or drops below the
+  cat — so it never clips off-window (it also fades only now, so framer-motion no
+  longer clobbers the centering transform). The **tray title** reliably reflects
+  the mode (🐾 Roam / ✋ Grab) — macOS wouldn't clear a `None` title, so the "✋"
+  suffix used to stick after switching back to Roam.
 - **v0.3.0** — **Full-screen overlay + smooth walking/running animation.**
   Reworked wandering from the ground up. The cat window is now a screen-sized,
   transparent, **click-through overlay** and the cat moves *within* it via

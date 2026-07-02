@@ -1,4 +1,4 @@
-import { CatState } from '../../types';
+import { CatColor, CatState } from '../../types';
 import './cat.css';
 
 /** How the cat is moving right now — drives the walk/run/jitter animations. */
@@ -8,39 +8,44 @@ export type Gait = 'idle' | 'walk' | 'run' | 'jitter';
 type Pose = 'sit' | 'stand' | 'sleep' | 'alert' | 'angry' | 'exhausted';
 
 /**
- * Side-view pastel cat, drawn facing **right** (App flips the container with
- * `scaleX(-1)` when it heads left). One SVG, six postures:
+ * Chunky, thick-line "sticker" cat — pastel fills, big eyes, pink cheeks. The
+ * viewpoint is chosen per pose for the most natural read (an idle cat faces you;
+ * a moving one is drawn in profile):
  *
- *  - `sit`   — calm resting pose (playing / curious / active while standing still)
- *  - `stand` — a four-legged standing rig used for both walk & run; the gait
- *              class in cat.css swings the legs (diagonal pairs) and bobs the
- *              body, faster/bigger for `run`.
- *  - `sleep` — curled loaf, head down, tail wrapped, eye shut
- *  - `alert` — arched back, ears back, puffed tail, wide eye
- *  - `angry` — higher arch, hiss + fangs, max-puffed tail
- *  - `exhausted` — flopped forward, tongue out, drooped tail
+ *  - `sit`   — **front view**, sitting and looking at you (playing / curious /
+ *              active while still); the face varies by mood.
+ *  - `stand` — **side profile**, an elongated loaf shared by walk & run; the
+ *              gait class in cat.css swings the legs (diagonal pairs), bobs the
+ *              body, and streams the tail back for a run.
+ *  - `sleep` — curled loaf, eyes shut, tail wrapped
+ *  - `alert` — arched back, ears back, puffed tail, wide eye (profile)
+ *  - `angry` — higher arch, hiss + fang, max-puffed tail (profile)
+ *  - `exhausted` — flopped on its side, tongue out, drooped tail
  *
- * Anatomy is a set of primitives (body path, capsule legs, circle head, triangle
- * ears, a stroked tail) so the profile stays predictable. Idle motion (breathe,
- * tail wag, whisker twitch) and gait motion live in cat.css, keyed off the
- * `state-<mood>` / `pose-<name>` / `gait-<name>` classes.
- *
- * This is a hand-authored doodle: the profile silhouette reads clearly and the
- * gaits are believable, but it's still a stylized first pass — not a polished
- * character sheet.
+ * Coat color is a set of CSS custom properties on `.cat`, switched by the
+ * `color-<name>` class (see cat.css). Tabbies (orange / gray) reveal a stripe
+ * layer that's hidden for the solid colors. viewBox is per-pose so each
+ * viewpoint gets a sensible aspect ratio inside the square window.
  */
-export function Cat({ state, gait = 'idle' }: { state: CatState; gait?: Gait }) {
+export function Cat({
+  state,
+  gait = 'idle',
+  color = 'cream',
+}: {
+  state: CatState;
+  gait?: Gait;
+  color?: CatColor;
+}) {
   const pose = poseFor(state, gait);
   return (
     <svg
-      className={`cat state-${state} pose-${pose} gait-${gait}`}
-      viewBox="0 0 200 160"
+      className={`cat color-${color} state-${state} pose-${pose} gait-${gait}`}
+      viewBox={POSE_VIEWBOX[pose]}
       xmlns="http://www.w3.org/2000/svg"
       role="img"
       aria-label={`cat: ${state}`}
     >
       <Body pose={pose} state={state} />
-      <Accessory state={state} pose={pose} />
     </svg>
   );
 }
@@ -62,57 +67,35 @@ function poseFor(state: CatState, gait: Gait): Pose {
   }
 }
 
+const POSE_VIEWBOX: Record<Pose, string> = {
+  sit: '0 0 180 196',
+  stand: '0 0 240 150',
+  sleep: '0 0 230 150',
+  alert: '0 0 210 176',
+  angry: '0 0 210 176',
+  exhausted: '0 0 240 140',
+};
+
 // ---------------------------------------------------------------------------
-// Shared anatomy pieces (facing right)
+// Shared face pieces
 // ---------------------------------------------------------------------------
 
-/** Two upright ears on top of a head centered at (cx, cy). */
-function Ears({ cx, cy }: { cx: number; cy: number }) {
-  // Offsets from head centre for the back (left) and front (right) ear.
+/** Big round eye: colored disc + pupil + catchlight (all theme-driven so the
+ * black cat gets white eyes with a dark pupil, others get a dark shiny eye). */
+function Eye({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   return (
     <>
-      <path className="fur-line" d={`M${cx - 17},${cy - 18} L${cx - 23},${cy - 44} L${cx + 1},${cy - 26} Z`} />
-      <path className="fur-line" d={`M${cx + 4},${cy - 24} L${cx + 22},${cy - 46} L${cx + 26},${cy - 20} Z`} />
-      <path className="ear-inner" d={`M${cx - 13},${cy - 22} L${cx - 16},${cy - 37} L${cx - 2},${cy - 26} Z`} />
-      <path className="ear-inner" d={`M${cx + 7},${cy - 25} L${cx + 19},${cy - 39} L${cx + 22},${cy - 24} Z`} />
+      <circle className="eye" cx={cx} cy={cy} r={r} />
+      <circle className="pupil" cx={cx} cy={cy} r={r * 0.5} />
+      <circle className="eye-hl" cx={cx + r * 0.32} cy={cy - r * 0.34} r={r * 0.3} />
     </>
   );
 }
-
-/** Upright head (ears, muzzle, nose, whiskers) centered at (cx, cy). */
-function Head({ cx, cy, r = 25 }: { cx: number; cy: number; r?: number }) {
-  return (
-    <>
-      <Ears cx={cx} cy={cy} />
-      <circle className="fur-line" cx={cx} cy={cy} r={r} />
-      <ellipse className="muzzle" cx={cx + 20} cy={cy + 8} rx={13} ry={11} />
-      <path className="nose" d={`M${cx + 30},${cy + 4} l6,4 l-6,4 Z`} />
-      <g className="cat-whiskers">
-        <path className="whisker" d={`M${cx + 22},${cy + 6} L${cx + 46},${cy}`} />
-        <path className="whisker" d={`M${cx + 22},${cy + 10} L${cx + 46},${cy + 12}`} />
-      </g>
-    </>
-  );
-}
-
-/** Open eye with a catchlight. */
-function EyeOpen({ cx, cy, r = 4.5 }: { cx: number; cy: number; r?: number }) {
-  return (
-    <>
-      <ellipse className="eye" cx={cx} cy={cy} rx={r} ry={r + 1} />
-      <circle className="eye-light" cx={cx + 2} cy={cy - 2} r={1.7} />
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Poses
-// ---------------------------------------------------------------------------
 
 function Body({ pose, state }: { pose: Pose; state: CatState }) {
   switch (pose) {
     case 'stand':
-      return <Stand state={state} />;
+      return <Stand />;
     case 'sleep':
       return <Sleep />;
     case 'alert':
@@ -127,210 +110,284 @@ function Body({ pose, state }: { pose: Pose; state: CatState }) {
   }
 }
 
-/** Seated: rounded rear, chest rising to the head; one front leg + paw. */
+// ---------------------------------------------------------------------------
+// SIT — front view, chubby, sitting. Face varies by mood.
+// ---------------------------------------------------------------------------
 function Sit({ state }: { state: CatState }) {
   return (
     <>
+      {/* curled tail peeking out to the side */}
       <g className="cat-tail">
-        <path className="tail-line" d="M50,124 C24,124 20,88 40,82" />
+        <path className="body" d="M40,168 C10,176 8,140 30,140 C48,140 54,158 50,172 Z" />
       </g>
-      <rect className="leg far" x="98" y="112" width="12" height="30" rx="5" />
       <g className="cat-breathe">
+        {/* ears */}
+        <path className="body" d="M46,64 C40,30 52,22 74,52 Z" />
+        <path className="body" d="M134,64 C140,30 128,22 106,52 Z" />
+        <path className="ear-in" d="M52,58 C49,38 57,34 68,52 Z" />
+        <path className="ear-in" d="M128,58 C131,38 123,34 112,52 Z" />
+        {/* head + body blob */}
         <path
-          className="fur-line"
-          d="M46,142 C34,108 44,80 74,78 C104,76 120,94 120,116 C120,124 116,126 110,124 C104,110 94,108 84,116 C74,124 68,134 66,142 Z"
+          className="body"
+          d="M26,104 C26,58 52,40 90,40 C128,40 154,58 154,104 C154,128 150,146 148,160 C144,182 120,190 90,190 C60,190 36,182 32,160 C30,146 26,128 26,104 Z"
         />
+        {/* white belly */}
+        <path
+          className="belly"
+          d="M64,150 C64,120 116,120 116,150 C116,176 100,186 90,186 C80,186 64,176 64,150 Z"
+        />
+        {/* tabby forehead stripes */}
+        <g className="stripes">
+          <path className="stripe-line" d="M78,52 L74,66" />
+          <path className="stripe-line" d="M90,50 L90,64" />
+          <path className="stripe-line" d="M102,52 L106,66" />
+        </g>
+        {/* front paws */}
+        <ellipse className="leg" cx="66" cy="184" rx="17" ry="12" />
+        <ellipse className="leg" cx="114" cy="184" rx="17" ry="12" />
+        {/* cheeks */}
+        <ellipse className="cheek" cx="52" cy="118" rx="13" ry="10" />
+        <ellipse className="cheek" cx="128" cy="118" rx="13" ry="10" />
+        {/* whiskers */}
+        <path className="whisker" d="M40,120 L16,116" />
+        <path className="whisker" d="M40,127 L16,130" />
+        <path className="whisker" d="M140,120 L164,116" />
+        <path className="whisker" d="M140,127 L164,130" />
+        <SitFace state={state} />
       </g>
-      <rect className="leg" x="108" y="112" width="13" height="30" rx="6" />
-      <ellipse className="leg" cx="114" cy="140" rx="9" ry="5" />
-      <Head cx={140} cy={64} />
-      <EyeOpen cx={147} cy={60} />
-      <Mouth state={state} cx={140} />
     </>
   );
 }
 
-/** Four-legged standing rig, shared by walk & run (gait class animates it). */
-function Stand({ state }: { state: CatState }) {
+/** The front-view face, expression by mood. */
+function SitFace({ state }: { state: CatState }) {
+  const nose = <path className="nose" d="M84,120 L96,120 L90,127 Z" />;
+  const smile = (
+    <>
+      <path className="mouth" d="M90,127 C90,133 82,135 79,130" />
+      <path className="mouth" d="M90,127 C90,133 98,135 101,130" />
+    </>
+  );
+  switch (state) {
+    case 'playing':
+      // happy squint ^ ^ + open smile
+      return (
+        <>
+          <path className="eye-line" d="M56,106 C62,98 72,98 78,106" />
+          <path className="eye-line" d="M102,106 C108,98 118,98 124,106" />
+          {nose}
+          <path className="mouth" d="M78,128 C84,138 96,138 102,128" />
+        </>
+      );
+    case 'curious':
+      return (
+        <>
+          <Eye cx={66} cy={104} r={11} />
+          <Eye cx={114} cy={104} r={11} />
+          {nose}
+          {/* tiny 'o' of curiosity */}
+          <circle className="mouth-o" cx="90" cy="132" r="3" />
+        </>
+      );
+    default:
+      // active / anything else at rest: bright round eyes + content smile
+      return (
+        <>
+          <Eye cx={66} cy={104} r={11} />
+          <Eye cx={114} cy={104} r={11} />
+          {nose}
+          {smile}
+        </>
+      );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// STAND — side profile loaf, shared by walk & run (gait class animates it).
+// ---------------------------------------------------------------------------
+function Stand() {
   return (
     <>
+      {/* tail up-left */}
       <g className="cat-tail">
-        <path className="tail-line" d="M48,104 C24,100 22,72 40,66" />
+        <path className="body" d="M44,86 C18,80 10,34 30,26 C40,22 48,30 44,42 C34,52 34,72 56,80 Z" />
       </g>
-      {/* Everything but the tail bobs together as one body during the gait. */}
+      {/* everything but the tail bobs together during the gait */}
       <g className="cat-move">
-        {/* far side legs (behind the body) */}
-        <rect className="leg far leg-a" x="60" y="112" width="11" height="30" rx="5" />
-        <rect className="leg far leg-b" x="118" y="112" width="11" height="30" rx="5" />
-        <g className="cat-breathe">
-          <path
-            className="fur-line"
-            d="M44,116 C38,86 58,74 96,74 C132,74 150,84 150,104 C150,120 138,124 120,124 L70,124 C56,124 48,124 44,116 Z"
-          />
+        {/* far legs (behind the body) */}
+        <rect className="leg far leg-a" x="66" y="104" width="20" height="34" rx="10" />
+        <rect className="leg far leg-b" x="150" y="104" width="20" height="34" rx="10" />
+        {/* body: long loaf with a head bump at the right */}
+        <path
+          className="body"
+          d="M40,84 C40,54 70,46 120,46 C150,46 168,44 176,40 C182,20 210,20 214,44 C222,52 224,64 224,80 C224,104 210,120 176,120 L78,120 C54,120 40,108 40,84 Z"
+        />
+        {/* white belly */}
+        <path
+          className="belly"
+          d="M60,110 C60,96 190,96 200,104 C200,118 180,120 120,120 L80,120 C66,120 60,116 60,110 Z"
+        />
+        {/* tabby back stripes */}
+        <g className="stripes">
+          <path className="stripe" d="M78,54 C82,54 84,58 82,70 C80,76 76,76 74,70 C73,60 74,54 78,54 Z" />
+          <path className="stripe" d="M100,52 C104,52 106,56 104,68 C102,74 98,74 96,68 C95,58 96,52 100,52 Z" />
+          <path className="stripe" d="M122,52 C126,52 128,56 126,68 C124,74 120,74 118,68 C117,58 118,52 122,52 Z" />
+          <path className="stripe" d="M144,52 C148,52 150,56 148,68 C146,74 142,74 140,68 C139,58 140,52 144,52 Z" />
+          <path className="stripe" d="M166,54 C170,54 172,58 170,70 C168,76 164,76 162,70 C161,60 162,54 166,54 Z" />
         </g>
-        {/* near side legs (in front of the body) */}
-        <rect className="leg leg-b" x="52" y="114" width="12" height="30" rx="5" />
-        <rect className="leg leg-a" x="126" y="114" width="12" height="30" rx="5" />
-        <Head cx={150} cy={64} />
-        <EyeOpen cx={157} cy={60} />
-        <Mouth state={state} cx={150} />
+        {/* near legs (in front of the body) */}
+        <rect className="leg leg-b" x="58" y="106" width="20" height="34" rx="10" />
+        <rect className="leg leg-a" x="158" y="106" width="20" height="34" rx="10" />
+        {/* ear + face (3/4) */}
+        <path className="body" d="M188,40 C186,20 200,18 206,38 Z" />
+        <path className="ear-in" d="M192,38 C191,26 199,25 202,37 Z" />
+        <Eye cx={196} cy={72} r={7} />
+        <path className="whisker" d="M206,86 L232,82" />
+        <path className="whisker" d="M206,92 L232,94" />
+        <path className="mouth" d="M212,80 C216,84 222,84 224,80" />
       </g>
     </>
   );
 }
 
-/** Curled sleeping loaf, head resting left, tail wrapped around the front. */
+// ---------------------------------------------------------------------------
+// SLEEP — curled loaf, eyes shut, tail wrapped.
+// ---------------------------------------------------------------------------
 function Sleep() {
   return (
     <>
-      <g className="cat-breathe cat-breathe-loaf">
-        <ellipse className="fur-line" cx="102" cy="118" rx="64" ry="27" />
+      <g className="cat-breathe">
+        {/* big curled body */}
+        <path
+          className="body"
+          d="M118,140 C60,140 30,112 30,84 C30,50 62,34 108,34 C170,34 210,54 210,92 C210,124 180,140 118,140 Z"
+        />
       </g>
+      {/* tail curling across the front */}
       <g className="cat-tail">
-        <path className="tail-line" d="M150,126 C168,120 168,138 150,140 C120,144 96,144 82,138" />
+        <path className="body" d="M52,132 C24,132 22,150 50,148 C96,150 150,150 176,136 C150,144 92,146 52,132 Z" />
       </g>
-      <circle className="fur-line" cx="56" cy="112" r="24" />
-      <path className="fur-line" d="M40,96 L34,74 L58,90 Z" />
-      <path className="fur-line" d="M62,90 L80,72 L84,96 Z" />
-      <path className="ear-inner" d="M44,92 L41,79 L54,90 Z" />
-      <path className="ear-inner" d="M65,90 L77,78 L80,94 Z" />
-      <path className="eye-line" d="M42,112 q6,5 12,0" />
-      <ellipse className="muzzle" cx="40" cy="118" rx="10" ry="8" />
-      <path className="nose" d="M32,114 l-5,4 l5,4 Z" />
+      {/* ears */}
+      <path className="body" d="M60,54 C48,26 66,18 84,44 Z" />
+      <path className="body" d="M96,44 C104,18 122,24 116,52 Z" />
+      <path className="ear-in" d="M65,50 C58,32 68,28 79,45 Z" />
+      {/* head resting on the left */}
+      <path
+        className="body"
+        d="M34,96 C34,66 58,52 84,52 C112,52 128,72 126,98 C124,122 104,132 82,132 C56,132 34,120 34,96 Z"
+      />
+      {/* closed sleepy eyes */}
+      <path className="eye-line" d="M50,96 C56,104 66,104 72,96" />
+      <path className="eye-line" d="M88,96 C94,104 104,104 110,96" />
+      <ellipse className="cheek" cx="58" cy="110" rx="11" ry="8" />
+      <path className="nose" d="M76,104 L86,104 L81,110 Z" />
     </>
   );
 }
 
-/** Arched back, ears laid back, puffed tail, wide startled eye. */
+// ---------------------------------------------------------------------------
+// ALERT — arched back, ears back, puffed tail, wide eye (profile).
+// ---------------------------------------------------------------------------
 function Alert() {
   return (
     <>
       <g className="cat-tail cat-tail-puff">
-        <path className="tail-line puff" d="M50,92 C30,70 34,44 50,38" />
+        <path className="body" d="M40,120 C6,108 6,52 34,42 C50,36 60,50 50,64 C36,76 34,102 60,110 Z" />
       </g>
-      <rect className="leg far" x="58" y="112" width="11" height="30" rx="5" />
-      <rect className="leg far" x="120" y="112" width="11" height="30" rx="5" />
       <g className="cat-breathe">
+        <rect className="leg" x="56" y="126" width="19" height="38" rx="9" />
+        <rect className="leg" x="132" y="126" width="19" height="38" rx="9" />
         <path
-          className="fur-line"
-          d="M46,120 C34,78 60,58 96,58 C132,58 150,80 148,112 C147,122 136,124 118,124 L72,124 C56,124 50,124 46,120 Z"
+          className="body"
+          d="M44,138 C32,84 60,44 106,44 C150,44 172,84 168,138 C166,150 150,150 128,150 L84,150 C60,150 46,150 44,138 Z"
         />
+        <path
+          className="belly"
+          d="M64,132 C64,116 150,116 152,132 C152,146 132,148 108,148 L86,148 C70,148 64,142 64,132 Z"
+        />
+        {/* ears swept back */}
+        <path className="body" d="M150,54 C140,32 158,26 168,44 Z" />
+        <path className="body" d="M172,48 C186,34 196,46 180,60 Z" />
+        <path className="ear-in" d="M154,50 C148,36 158,33 165,45 Z" />
+        <path
+          className="body"
+          d="M138,74 C138,50 158,38 178,38 C200,38 214,56 212,78 C210,98 194,108 174,108 C154,108 138,96 138,74 Z"
+        />
+        <Eye cx={176} cy={68} r={9} />
+        <ellipse className="mouth-fill" cx="192" cy="92" rx="5" ry="6" />
       </g>
-      <rect className="leg" x="52" y="114" width="12" height="30" rx="5" />
-      <rect className="leg" x="126" y="114" width="12" height="30" rx="5" />
-      {/* ears swept back */}
-      <path className="fur-line" d="M134,52 L120,34 L150,42 Z" />
-      <path className="fur-line" d="M156,44 L176,34 L168,52 Z" />
-      <circle className="fur-line" cx="152" cy="60" r="24" />
-      <ellipse className="muzzle" cx="171" cy="68" rx="12" ry="10" />
-      <path className="nose" d="M181,64 l6,4 l-6,4 Z" />
-      <EyeOpen cx={158} cy={55} r={6} />
-      <ellipse className="mouth-open" cx="172" cy="80" rx="3.5" ry="4.5" />
     </>
   );
 }
 
-/** Higher arch, hissing mouth with fangs, angry brow, max-puffed tail. */
+// ---------------------------------------------------------------------------
+// ANGRY — higher arch, hiss + fang, max-puffed tail (profile).
+// ---------------------------------------------------------------------------
 function Angry() {
   return (
     <>
       <g className="cat-tail cat-tail-puff">
-        <path className="tail-line puff-max" d="M50,90 C26,66 32,38 50,32" />
+        <path className="body" d="M42,118 C2,104 4,42 34,32 C52,26 62,42 50,56 C34,68 34,98 62,108 Z" />
       </g>
-      <rect className="leg far" x="58" y="112" width="11" height="30" rx="5" />
-      <rect className="leg far" x="120" y="112" width="11" height="30" rx="5" />
       <g className="cat-breathe">
+        <rect className="leg" x="56" y="126" width="19" height="38" rx="9" />
+        <rect className="leg" x="132" y="126" width="19" height="38" rx="9" />
         <path
-          className="fur-line"
-          d="M44,120 C30,74 58,52 96,52 C134,52 152,78 150,112 C149,122 138,124 118,124 L72,124 C54,124 48,124 44,120 Z"
+          className="body"
+          d="M44,140 C28,80 60,36 106,36 C152,36 176,80 170,140 C168,152 150,150 128,150 L84,150 C58,150 46,152 44,140 Z"
         />
+        <path
+          className="belly"
+          d="M64,134 C64,118 150,118 152,134 C152,148 132,150 108,150 L86,150 C70,150 64,144 64,134 Z"
+        />
+        <path className="body" d="M150,52 C140,30 158,24 168,42 Z" />
+        <path className="body" d="M172,46 C186,32 196,44 180,58 Z" />
+        <path className="ear-in" d="M154,48 C148,34 158,31 165,43 Z" />
+        <path
+          className="body"
+          d="M138,72 C138,48 158,36 178,36 C200,36 214,54 212,76 C210,96 194,106 174,106 C154,106 138,94 138,72 Z"
+        />
+        <path className="eye-line thick" d="M166,64 L182,60" />
+        <path className="mouth-fill" d="M188,84 Q200,80 206,88 Q200,100 194,100 Q189,96 188,84 Z" />
+        <path className="fang" d="M192,86 l2.5,6 l2.5,-6 Z" />
       </g>
-      <rect className="leg" x="52" y="114" width="12" height="30" rx="5" />
-      <rect className="leg" x="126" y="114" width="12" height="30" rx="5" />
-      <path className="fur-line" d="M136,54 L124,40 L152,46 Z" />
-      <path className="fur-line" d="M158,48 L178,42 L166,56 Z" />
-      <circle className="fur-line" cx="152" cy="60" r="24" />
-      <ellipse className="muzzle" cx="171" cy="70" rx="12" ry="10" />
-      <path className="nose" d="M181,64 l6,4 l-6,4 Z" />
-      <line className="brow angry" x1="146" y1="48" x2="160" y2="53" />
-      <path className="eye-line thick" d="M150,58 L162,55" />
-      <path className="mouth-open fill" d="M166,74 Q176,72 184,76 Q178,86 172,86 Q168,84 166,74 Z" />
-      <path className="fang" d="M170,75 l2,5 l2,-5 Z" />
-      <path className="fang" d="M177,76 l2,5 l2,-5 Z" />
     </>
   );
 }
 
-/** Flopped forward, forelegs splayed out front, tongue lolling, tail drooped. */
+// ---------------------------------------------------------------------------
+// EXHAUSTED — flopped on its side, tongue out, drooped tail.
+// ---------------------------------------------------------------------------
 function Exhausted() {
   return (
     <>
       <g className="cat-tail">
-        <path className="tail-line" d="M40,128 C16,132 12,120 26,116" />
+        <path className="body" d="M46,110 C16,116 12,96 32,90 C42,88 48,98 46,110 Z" />
       </g>
-      <g className="cat-breathe cat-breathe-loaf">
-        <ellipse className="fur-line" cx="96" cy="126" rx="60" ry="20" />
+      <g className="cat-breathe">
+        {/* lying body */}
+        <path
+          className="body"
+          d="M44,96 C44,74 70,66 120,66 C175,66 205,78 205,100 C205,120 180,126 120,126 C70,126 44,118 44,96 Z"
+        />
+        <path
+          className="belly"
+          d="M60,116 C70,104 180,104 195,112 C190,124 150,126 120,126 C80,126 62,122 60,116 Z"
+        />
+        {/* outstretched forelegs */}
+        <rect className="leg" x="70" y="118" width="46" height="16" rx="8" />
+        <rect className="leg" x="128" y="118" width="46" height="16" rx="8" />
+        {/* head flopped to the right */}
+        <path
+          className="body"
+          d="M158,74 C158,52 178,42 198,42 C220,42 234,58 232,80 C230,100 214,110 194,110 C172,110 158,96 158,74 Z"
+        />
+        <path className="body" d="M170,50 C160,30 178,24 188,42 Z" />
+        <path className="ear-in" d="M174,46 C168,32 178,29 185,41 Z" />
+        <path className="eye-line thick" d="M182,66 L192,72 L182,78" />
+        <ellipse className="cheek" cx="172" cy="84" rx="10" ry="8" />
+        <path className="tongue" d="M206,92 q10,8 3,18 q-6,-3 -6,-11 Z" />
       </g>
-      <rect className="leg" x="70" y="128" width="30" height="11" rx="5" />
-      <rect className="leg" x="106" y="128" width="30" height="11" rx="5" />
-      <circle className="fur-line" cx="150" cy="104" r="23" />
-      <path className="fur-line" d="M134,86 L128,66 L152,80 Z" />
-      <path className="fur-line" d="M156,82 L174,64 L178,88 Z" />
-      <ellipse className="muzzle" cx="169" cy="110" rx="12" ry="10" />
-      <path className="nose" d="M179,106 l6,4 l-6,4 Z" />
-      <path className="eye-line thick" d="M150,100 L160,104 L150,108" />
-      <path className="tongue" d="M180,112 q6,6 2,12 q-4,-2 -4,-8 Z" />
     </>
   );
-}
-
-/** Small mouth line under the muzzle for the calm/standing poses. */
-function Mouth({ state, cx }: { state: CatState; cx: number }) {
-  // A soft content curve; `playing` gets a happier upturn.
-  const y = 78;
-  const x = cx + 40;
-  if (state === 'playing') {
-    return <path className="mouth-line" d={`M${x},${y} q-6,7 -13,2`} />;
-  }
-  return <path className="mouth-line" d={`M${x},${y} q-6,5 -12,2`} />;
-}
-
-// ---------------------------------------------------------------------------
-// Accessory glyphs — floated near the head, position depends on the pose.
-// ---------------------------------------------------------------------------
-
-function Accessory({ state, pose }: { state: CatState; pose: Pose }) {
-  switch (state) {
-    case 'sleeping':
-      // Head is on the left in the sleep loaf; zzz drift up from it.
-      return (
-        <g className="zzz">
-          <text x="78" y="84" className="glyph">z</text>
-          <text x="88" y="72" className="glyph small">z</text>
-          <text x="96" y="62" className="glyph tiny">z</text>
-        </g>
-      );
-    case 'playing':
-      return (
-        <g className="sparkle">
-          <path className="glyph-fill spark" d="M176,26 l2,6 l6,2 l-6,2 l-2,6 l-2,-6 l-6,-2 l6,-2 Z" />
-        </g>
-      );
-    case 'curious':
-      return (
-        <text x="176" y="30" className="glyph pop question">?</text>
-      );
-    case 'alert':
-      return (
-        <text x="180" y="30" className="glyph pop bang">!</text>
-      );
-    case 'exhausted':
-      return (
-        <g className="sweat">
-          <path className="drop" d={pose === 'exhausted' ? 'M138,84 C138,80 142,78 142,84 A2,2 0 1 1 138,84 Z' : 'M138,44 C138,40 142,38 142,44 A2,2 0 1 1 138,44 Z'} />
-        </g>
-      );
-    default:
-      return null;
-  }
 }

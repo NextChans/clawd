@@ -3,7 +3,7 @@ import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
-import { Config } from './types';
+import { CAT_COLORS, Config } from './types';
 import { formatCost, formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
 
@@ -23,7 +23,7 @@ export default function Details() {
     <div className="details">
       <header className="d-head">
         <div className="d-cat">
-          <Cat state={state} />
+          <Cat state={state} color={config.catColor} />
         </div>
         <div>
           <div className="d-state">{STATE_LABEL[state]}</div>
@@ -74,6 +74,27 @@ export default function Details() {
       )}
 
       <section className="d-settings">
+        <div className="d-field-col">
+          <span>고양이 색</span>
+          <div className="d-swatches" role="radiogroup" aria-label="고양이 색">
+            {CAT_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="radio"
+                aria-checked={config.catColor === c.id}
+                aria-label={c.label}
+                title={c.label}
+                className={config.catColor === c.id ? 'd-swatch active' : 'd-swatch'}
+                onClick={() => patch({ catColor: c.id })}
+              >
+                <span className="d-swatch-dot" style={{ background: c.swatch }} />
+                <span className="d-swatch-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <label className="d-field">
           <span>일일 예산 (USD)</span>
           <input

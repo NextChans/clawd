@@ -1,12 +1,20 @@
-/* Pastel palette — tweak here to re-skin the cat. */
+/* =========================================================
+   Chunky sticker cat — theme tokens.
+   Coat colors switch these via the `.color-<name>` classes.
+   ========================================================= */
 .cat {
-  --fur: #f6e7c7;
-  --fur-shade: #ecd9ae;
-  --line: #7a6653;
-  --ear: #f7c6ce;
-  --nose: #f58ba0;
-  --eye: #3a3327;
-  --muzzle: #fbf1d9;
+  --cat-line: #4a3a30;
+  --cat-lw: 5;
+  --cat-body: #f7e6c4;
+  --cat-belly: #fffdf6;
+  --cat-ear: #f6bcc6;
+  --cat-cheek: #f8b0bd;
+  --cat-nose: #e5849c;
+  --cat-eye: #3a2e28;
+  --cat-pupil: transparent;
+  --cat-eye-hl: 0.92;
+  --cat-stripe: #e59a52;
+  --cat-stripe-op: 0;
 
   width: 100%;
   height: 100%;
@@ -14,166 +22,191 @@
   display: block;
 }
 
-/* ---- base anatomy ---- */
-.fur-line {
-  fill: var(--fur);
-  stroke: var(--line);
-  stroke-width: 2.4;
+/* ---- coat presets ---- */
+.color-black {
+  --cat-line: #161514;
+  --cat-body: #35312f;
+  --cat-belly: #cbc5be;
+  --cat-ear: #c58c97;
+  --cat-cheek: #b87b86;
+  --cat-nose: #d7aab3;
+  --cat-eye: #fbf7f0;
+  --cat-pupil: #161514;
+  --cat-eye-hl: 0;
+}
+.color-orange {
+  --cat-line: #2c2420;
+  --cat-body: #f3b877;
+  --cat-belly: #fff8ef;
+  --cat-ear: #f4b7a1;
+  --cat-cheek: #ef9a80;
+  --cat-nose: #d76f5e;
+  --cat-stripe: #e0954d;
+  --cat-stripe-op: 1;
+}
+.color-gray {
+  --cat-line: #2c2420;
+  --cat-body: #b8bdc1;
+  --cat-belly: #f5f6f7;
+  --cat-ear: #f0b6bf;
+  --cat-cheek: #e7a4ab;
+  --cat-nose: #c98b98;
+  --cat-eye: #2c2420;
+  --cat-stripe: #8d949a;
+  --cat-stripe-op: 1;
+}
+.color-white {
+  --cat-line: #4a4038;
+  --cat-body: #fbf7f1;
+  --cat-belly: #ffffff;
+  --cat-ear: #f5bcc6;
+  --cat-cheek: #f6b6bf;
+  --cat-nose: #df8799;
+}
+
+/* ---- shapes ---- */
+.body {
+  fill: var(--cat-body);
+  stroke: var(--cat-line);
+  stroke-width: var(--cat-lw);
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.muzzle {
-  fill: var(--muzzle);
+.belly {
+  fill: var(--cat-belly);
   stroke: none;
 }
-.ear-inner {
-  fill: var(--ear);
+.ear-in {
+  fill: var(--cat-ear);
   stroke: none;
 }
-.nose {
-  fill: var(--nose);
+.cheek {
+  fill: var(--cat-cheek);
   stroke: none;
+  opacity: 0.85;
 }
 .leg {
-  fill: var(--fur);
-  stroke: var(--line);
-  stroke-width: 2.4;
+  fill: var(--cat-body);
+  stroke: var(--cat-line);
+  stroke-width: var(--cat-lw);
   stroke-linejoin: round;
-}
-.leg.far {
-  fill: var(--fur-shade);
-}
-.whisker {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 1.3;
-  stroke-linecap: round;
-  opacity: 0.6;
-}
-
-/* ---- tail (stroked, so puffing = a fatter stroke) ---- */
-.tail-line {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 12;
   stroke-linecap: round;
 }
-.tail-line.puff {
-  stroke-width: 18;
-}
-.tail-line.puff-max {
-  stroke-width: 22;
-}
 
-/* ---- eyes / mouth / brows ---- */
+/* ---- eyes / mouth ---- */
 .eye {
-  fill: var(--eye);
+  fill: var(--cat-eye);
   stroke: none;
 }
-.eye-light {
+.pupil {
+  fill: var(--cat-pupil);
+  stroke: none;
+}
+.eye-hl {
   fill: #fff;
-  opacity: 0.9;
+  opacity: var(--cat-eye-hl);
 }
 .eye-line {
   fill: none;
-  stroke: var(--eye);
-  stroke-width: 2.6;
+  stroke: var(--cat-eye);
+  stroke-width: 3.4;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .eye-line.thick {
-  stroke-width: 3;
+  stroke-width: 4;
 }
-.brow {
+.nose {
+  fill: var(--cat-nose);
+  stroke: none;
+}
+.mouth {
   fill: none;
-  stroke: var(--line);
+  stroke: var(--cat-line);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mouth-o {
+  fill: #d8607a;
+  stroke: none;
+}
+.mouth-fill {
+  fill: #e0607a;
+  stroke: var(--cat-line);
   stroke-width: 2.4;
-  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.brow.angry {
-  stroke: #a5563f;
-}
-.mouth-line {
-  fill: none;
-  stroke: var(--line);
+.tongue {
+  fill: #f28ba2;
+  stroke: var(--cat-line);
   stroke-width: 2;
-  stroke-linecap: round;
-}
-.mouth-open {
-  fill: #c65b6b;
-  stroke: var(--line);
-  stroke-width: 1.6;
-}
-.mouth-open.fill {
-  fill: #b0344a;
 }
 .fang {
   fill: #fff;
   stroke: none;
 }
-.tongue {
-  fill: var(--nose);
-  stroke: var(--line);
-  stroke-width: 1.4;
+.whisker {
+  fill: none;
+  stroke: var(--cat-line);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.75;
 }
 
-/* ---- accessory glyphs ---- */
-.glyph {
-  fill: var(--line);
-  font: 700 16px system-ui, sans-serif;
+/* ---- tabby stripes (hidden unless the preset opts in) ---- */
+.stripes {
+  opacity: var(--cat-stripe-op);
 }
-.glyph.small { font-size: 12px; }
-.glyph.tiny { font-size: 9px; }
-.glyph.pop { font-size: 22px; }
-.glyph.question { fill: #6aa9d9; }
-.glyph.bang { fill: #e8a13a; }
-.glyph-fill.spark { fill: #ffd54a; stroke: none; }
-.drop { fill: #7fc7e8; stroke: none; }
+.stripe {
+  fill: var(--cat-stripe);
+  stroke: none;
+}
+.stripe-line {
+  fill: none;
+  stroke: var(--cat-stripe);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+}
 
 /* =========================================================
-   Transform origins for the animated parts
+   Animation origins + idle motion
    ========================================================= */
+/* Resting poses breathe by scaling the whole mass gently from the ground. */
 .cat-breathe {
   transform-box: fill-box;
-  transform-origin: 50% 100%; /* chest expands upward from the belly */
-  animation: breathe 3.4s ease-in-out infinite;
+  transform-origin: 50% 100%;
+  animation: breathe 3.6s ease-in-out infinite;
 }
 @keyframes breathe {
   0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(1.035); }
+  50% { transform: scaleY(1.025); }
 }
 
-/* Tail root pivots. Default (sit/stand/alert/angry) roots at its bottom-right
-   corner; sleep & exhausted paths root elsewhere so override per pose. */
+/* Tail wag — root pivots at its bottom-right corner for most poses. */
 .cat-tail {
   transform-box: fill-box;
   transform-origin: 100% 100%;
-  animation: wag 2.6s ease-in-out infinite;
+  animation: wag 2.8s ease-in-out infinite;
 }
 .pose-sleep .cat-tail {
-  transform-origin: 80% 20%;
+  transform-origin: 80% 30%;
   animation: wag-slow 6s ease-in-out infinite;
 }
 .pose-exhausted .cat-tail {
-  transform-origin: 100% 75%;
+  transform-origin: 100% 60%;
   animation: wag-slow 4.5s ease-in-out infinite;
 }
+.pose-sit .cat-tail {
+  transform-origin: 90% 30%;
+}
 @keyframes wag {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(7deg); }
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(4deg); }
 }
 @keyframes wag-slow {
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
-}
-
-.cat-whiskers {
-  transform-box: fill-box;
-  transform-origin: 0% 50%;
-  animation: twitch 5s ease-in-out infinite;
-}
-@keyframes twitch {
-  0%, 92%, 100% { transform: rotate(0deg); }
-  95% { transform: rotate(-2deg); }
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
 }
 
 .leg {
@@ -181,47 +214,15 @@
   transform-origin: 50% 0%; /* pivot at the hip / shoulder joint */
 }
 
-/* zzz / sparkle / pop / sweat glyph drifts */
-.zzz { animation: floaty 3s ease-in-out infinite; }
-@keyframes floaty {
-  0%, 100% { opacity: 0.4; transform: translateY(2px); }
-  50% { opacity: 1; transform: translateY(-2px); }
-}
-.sparkle { animation: twinkle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes twinkle {
-  0%, 100% { opacity: 0.4; transform: scale(0.85) rotate(0deg); }
-  50% { opacity: 1; transform: scale(1.1) rotate(20deg); }
-}
-.pop { animation: pop 0.9s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes pop {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.12); }
-}
-.sweat { animation: drip 2.2s ease-in-out infinite; }
-@keyframes drip {
-  0% { opacity: 0; transform: translateY(-4px); }
-  40% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(8px); }
-}
-
-/* =========================================================
-   Per-mood idle tuning (speed / posture)
-   ========================================================= */
+/* ---- per-mood idle tuning ---- */
 .state-sleeping .cat-breathe { animation-duration: 5s; }
-
-.state-playing .cat-tail { animation-duration: 1s; }
-.state-curious .cat-tail { animation-duration: 1.8s; }
-.state-active .cat-tail { animation-duration: 1.2s; }
-
-.state-alert .cat-tail { animation-duration: 0.7s; }
-.state-alert .cat-breathe { animation-duration: 1.8s; }
-
-.state-angry .cat-tail { animation-duration: 0.5s; }
-.state-angry .cat-breathe { animation-duration: 1.2s; }
-.state-angry { --fur: #f3ddb6; }
-
-.state-exhausted .cat-breathe { animation-duration: 0.8s; } /* panting */
-.state-exhausted { --fur: #efe0bd; }
+.state-playing .cat-tail { animation-duration: 1.4s; }
+.state-active .cat-tail { animation-duration: 1.6s; }
+.state-alert .cat-tail { animation-duration: 0.9s; }
+.state-alert .cat-breathe { animation-duration: 2s; }
+.state-angry .cat-tail { animation-duration: 0.6s; }
+.state-angry .cat-breathe { animation-duration: 1.3s; }
+.state-exhausted .cat-breathe { animation-duration: 0.9s; } /* panting */
 
 /* =========================================================
    Gait — walk / run share the standing rig; the class picks
@@ -233,39 +234,37 @@
 }
 
 /* ---- walking ---- */
-.gait-walk .cat-move { animation: bob 0.5s ease-in-out infinite; }
-.gait-walk .cat-breathe { animation: none; }
-.gait-walk .leg-a { animation: legswing 0.5s ease-in-out infinite; }
-.gait-walk .leg-b { animation: legswing 0.5s ease-in-out infinite reverse; }
-.gait-walk .cat-tail { animation-duration: 0.6s !important; }
+.gait-walk .cat-move { animation: bob 0.52s ease-in-out infinite; }
+.gait-walk .leg-a { animation: legswing 0.52s ease-in-out infinite; }
+.gait-walk .leg-b { animation: legswing 0.52s ease-in-out infinite reverse; }
+.gait-walk .cat-tail { animation-duration: 0.7s; }
 
 /* ---- running: same rig, faster + bigger ---- */
-.gait-run .cat-move { animation: bob-run 0.32s ease-in-out infinite; }
-.gait-run .cat-breathe { animation: none; }
-.gait-run .leg-a { animation: legswing-big 0.32s ease-in-out infinite; }
-.gait-run .leg-b { animation: legswing-big 0.32s ease-in-out infinite reverse; }
+.gait-run .cat-move { animation: bob-run 0.34s ease-in-out infinite; }
+.gait-run .leg-a { animation: legswing-big 0.34s ease-in-out infinite; }
+.gait-run .leg-b { animation: legswing-big 0.34s ease-in-out infinite reverse; }
 /* tail streams out behind while running */
 .gait-run .cat-tail { animation: none; transform: rotate(30deg); }
 
 /* ---- jittering (angry, in place): a quick side-to-side shudder ---- */
 .cat.gait-jitter { animation: shudder 0.14s linear infinite; }
-.gait-jitter .cat-tail { animation-duration: 0.3s !important; }
+.gait-jitter .cat-tail { animation-duration: 0.4s; }
 
 @keyframes bob {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+  50% { transform: translateY(-4px); }
 }
 @keyframes bob-run {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-8px); }
 }
 @keyframes legswing {
   0%, 100% { transform: rotate(15deg); }
   50% { transform: rotate(-15deg); }
 }
 @keyframes legswing-big {
-  0%, 100% { transform: rotate(26deg); }
-  50% { transform: rotate(-26deg); }
+  0%, 100% { transform: rotate(28deg); }
+  50% { transform: rotate(-28deg); }
 }
 @keyframes shudder {
   0%, 100% { transform: translateX(-2.5px); }

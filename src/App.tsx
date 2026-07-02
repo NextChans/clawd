@@ -304,7 +304,7 @@ export default function App() {
 
         {/* The cat itself — flips to face its travel direction. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
-          <Cat state={state} gait={gait} />
+          <Cat state={state} gait={gait} color={config.catColor} />
         </div>
       </div>
     </div>
