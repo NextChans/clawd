@@ -13,7 +13,7 @@ import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { usePeers, usePresencePublish } from './hooks/usePresence';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
-import { CatState } from './types';
+import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
 
@@ -125,6 +125,9 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gaitTimer = useRef<number | null>(null);
   const flyRef = useRef<HTMLDivElement>(null);
+  // The cat's current x within the window, mirrored for peer cats so a visitor
+  // can drift over to play. Updated wherever we move the cat.
+  const catXRef = useRef(0);
 
   // --- Movement primitives (imperative so React re-renders never clobber an
   // in-flight CSS transition; `transform` is never part of the JSX style). ---
@@ -140,6 +143,7 @@ export default function App() {
     if (!el) return;
     el.style.transition = 'none';
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    catXRef.current = x;
     setPlaced(true);
     clearGaitTimer();
     setGait('idle');
@@ -153,6 +157,7 @@ export default function App() {
     void el.offsetWidth;
     el.style.transition = `transform ${ev.duration_ms}ms ease-in-out`;
     el.style.transform = `translate3d(${ev.x}px, ${ev.y}px, 0)`;
+    catXRef.current = ev.x;
     setDirection(ev.direction);
     setGait(ev.gait);
     setPlaced(true);
@@ -472,8 +477,15 @@ export default function App() {
       )}
 
       {/* Visiting peer cats (social mode, Roam only). Gated on the toggle so
-          nothing shows for the default local setup. */}
-      {!grab && config.networkEnabled && <PeerCats peers={peers} />}
+          nothing shows for the default local setup. `getSelfX`/`selfPlayful`
+          let a visitor drift over to play when you're both relaxed. */}
+      {!grab && config.networkEnabled && (
+        <PeerCats
+          peers={peers}
+          getSelfX={() => catXRef.current}
+          selfPlayful={ACTIVITY_FOR_STATE[state] === 'light'}
+        />
+      )}
 
       {/* Plaything the cat reacts to (Roam only). The outer element is glided
           imperatively via flyRef; the inner element carries the per-kind CSS
