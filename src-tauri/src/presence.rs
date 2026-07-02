@@ -334,6 +334,17 @@ async fn run_room(
         None => (TopicId::from_bytes(rand::random()), vec![]),
     };
 
+    // Wait (bounded) for a home relay to be assigned before snapshotting our
+    // address, so the shared code carries a relay URL. Without it the node addr
+    // can be LAN-only and a joiner on another network has no path to us — the
+    // cause of rooms that link on the same Wi-Fi but stay stuck (🟡) across
+    // networks. Bounded so a relay-blocked network doesn't hang room creation.
+    let _ = tokio::time::timeout(
+        Duration::from_secs(6),
+        endpoint.home_relay().initialized(),
+    )
+    .await;
+
     // Publish a shareable code that includes our own address, so joiners can
     // bootstrap off us even if the original host is gone.
     let me = endpoint.node_addr().initialized().await;
