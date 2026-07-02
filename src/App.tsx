@@ -8,6 +8,7 @@ import { Butterfly } from './components/Playthings/Butterfly';
 import { Ball } from './components/Playthings/Ball';
 import { Yarn } from './components/Playthings/Yarn';
 import { Bird } from './components/Playthings/Bird';
+import { FishingRod } from './components/Playthings/FishingRod';
 import { PeerCats } from './components/Peers/PeerCats';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
@@ -17,7 +18,7 @@ import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
 
-type Mode = 'roam' | 'grab';
+type Mode = 'roam' | 'grab' | 'fishing';
 type Gait = 'idle' | 'walk' | 'run' | 'jitter';
 type Direction = 'left' | 'right';
 /** Resting flourishes scheduled by Rust. `yawn`/`stretch` have expressive
@@ -65,6 +66,8 @@ const FEED_REACT_MS = 5000;
 const FIRST_RUN_KEY = 'first_run_done';
 /** Tooltip max width (px); must match `.tooltip { max-width }` in App.css. */
 const TOOLTIP_MAX = 240;
+/** Cat container side in px; must match `CAT_SIZE` (Rust) and `.cat-container`. */
+const CAT_SIZE = 128;
 /** How the tooltip is anchored over the cat once auto-flip has run. */
 type TtAlign = 'center' | 'left' | 'right';
 
@@ -121,10 +124,19 @@ export default function App() {
   const [feedPhase, setFeedPhase] = useState<'eating' | 'purr' | null>(null);
 
   const grab = mode === 'grab';
+  const fishing = mode === 'fishing';
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gaitTimer = useRef<number | null>(null);
   const flyRef = useRef<HTMLDivElement>(null);
+  // Fishing (teaser) play: the lure follows the cursor and the cat eases after
+  // it in a rAF loop. `lureRef` is the live cursor position (window px); the
+  // rod string + lure feather are moved imperatively each frame via these refs.
+  const lureRef = useRef({ x: 0, y: 0 });
+  const lureElRef = useRef<HTMLDivElement>(null);
+  const rodLineRef = useRef<SVGLineElement>(null);
+  const fishRaf = useRef<number | null>(null);
+  const lastPounce = useRef(0);
   // The cat's current position within the window, mirrored for peer cats so a
   // visitor can drift over to play. Updated wherever we move the cat.
   const catXRef = useRef(0);
@@ -183,6 +195,12 @@ export default function App() {
     invoke('enter_grab', { x: r.left, y: r.top }).catch(() => {});
   };
 
+  // Leave fishing play (Rust flips the mode back to roam via `mode-change`;
+  // the loop's teardown reports the cat's final position).
+  const exitFishing = () => {
+    invoke('exit_fishing').catch(() => {});
+  };
+
   // Initial paint: place the cat where Rust says it is.
   useEffect(() => {
     invoke<[number, number]>('get_cat_pos')
@@ -207,14 +225,21 @@ export default function App() {
   // freeze the cat and hand its position to Rust to shrink the window.
   useEffect(() => {
     invoke<string>('get_mode')
-      .then((m) => setMode(m === 'grab' ? 'grab' : 'roam'))
+      .then((m) => setMode(m === 'grab' ? 'grab' : m === 'fishing' ? 'fishing' : 'roam'))
       .catch(() => {});
 
     const unlisten = listen<string>('mode-change', (e) => {
-      const next: Mode = e.payload === 'grab' ? 'grab' : 'roam';
+      const next: Mode =
+        e.payload === 'grab' ? 'grab' : e.payload === 'fishing' ? 'fishing' : 'roam';
       if (next === 'grab') freezeForGrab();
       setMode(next);
-      setBadge(next === 'grab' ? '🖐️ 잡기 모드 ON' : '🐾 놀기 모드');
+      setBadge(
+        next === 'grab'
+          ? '🖐️ 잡기 모드 ON'
+          : next === 'fishing'
+            ? '🎣 낚시대 놀이! (Esc로 종료)'
+            : '🐾 놀기 모드',
+      );
     });
     return () => {
       unlisten.then((off) => off());
@@ -362,18 +387,109 @@ export default function App() {
     }
   }, [grab]);
 
+  // Fishing play: the lure tracks the cursor and the cat eases after it every
+  // frame; Esc ends it. All movement is imperative so we never thrash React
+  // with per-frame state (only direction/gait/pounce flips, which are rare).
+  useEffect(() => {
+    if (!fishing) return;
+    // Start the lure near the cat so it doesn't snap across the screen.
+    lureRef.current = {
+      x: catXRef.current + CAT_SIZE / 2,
+      y: catYRef.current + CAT_SIZE * 0.28,
+    };
+
+    const onMove = (e: PointerEvent) => {
+      lureRef.current = { x: e.clientX, y: e.clientY };
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitFishing();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('keydown', onKey);
+
+    const el = containerRef.current;
+    if (el) el.style.transition = 'none'; // per-frame transform, no CSS tween
+
+    let lastDir: Direction = direction;
+    let lastGait: Gait = 'idle';
+
+    const step = () => {
+      const L = lureRef.current;
+      // Center the cat under the lure, body a little below so it reaches *up*
+      // at the dangling feather.
+      const tx = L.x - CAT_SIZE / 2;
+      const ty = L.y - CAT_SIZE * 0.28;
+      const dx = tx - catXRef.current;
+      const dy = ty - catYRef.current;
+      // Ease toward the target — a trailing chase, not a rigid lock.
+      const nx = catXRef.current + dx * 0.14;
+      const ny = catYRef.current + dy * 0.14;
+      catXRef.current = Math.max(0, Math.min(window.innerWidth - CAT_SIZE, nx));
+      catYRef.current = Math.max(0, Math.min(window.innerHeight - CAT_SIZE, ny));
+      if (el) {
+        el.style.transform = `translate3d(${catXRef.current}px, ${catYRef.current}px, 0)`;
+      }
+
+      const dist = Math.hypot(dx, dy);
+      const dir: Direction = dx < -2 ? 'left' : dx > 2 ? 'right' : lastDir;
+      if (dir !== lastDir) {
+        lastDir = dir;
+        setDirection(dir);
+      }
+      const g: Gait = dist > 90 ? 'run' : dist > 18 ? 'walk' : 'idle';
+      if (g !== lastGait) {
+        lastGait = g;
+        setGait(g);
+      }
+      // Bat at the lure once the cat has caught up, on a short cooldown.
+      if (dist < 30) {
+        const now = performance.now();
+        if (now - lastPounce.current > 850) {
+          lastPounce.current = now;
+          setPounce(true);
+          window.setTimeout(() => setPounce(false), 360);
+        }
+      }
+
+      // Move the string end + lure feather to the cursor.
+      rodLineRef.current?.setAttribute('x2', String(L.x));
+      rodLineRef.current?.setAttribute('y2', String(L.y));
+      if (lureElRef.current) {
+        // The feather's tie-on point is (22, 3) within its own 44×48 box.
+        lureElRef.current.style.transform = `translate3d(${L.x - 22}px, ${L.y - 3}px, 0)`;
+      }
+
+      fishRaf.current = requestAnimationFrame(step);
+    };
+    fishRaf.current = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('keydown', onKey);
+      if (fishRaf.current !== null) cancelAnimationFrame(fishRaf.current);
+      fishRaf.current = null;
+      setGait('idle');
+      setPounce(false);
+      // Hand Rust the cat's final spot so wandering resumes from here (covers
+      // both Esc and the tray toggle-off, since both clear `fishing`).
+      invoke('report_cat_pos', { x: catXRef.current, y: catYRef.current }).catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fishing]);
+
   // Distinguish a click (open details) from a drag (move window).
   const down = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (fishing) return; // fishing owns the pointer (lure follows the cursor)
     down.current = { x: e.clientX, y: e.clientY };
     dragged.current = false;
     // Holding still on the cat = petting → purr (until it turns into a drag).
     if (grab) setHolding(true);
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!down.current || dragged.current) return;
+    if (fishing || !down.current || dragged.current) return;
     const dx = Math.abs(e.clientX - down.current.x);
     const dy = Math.abs(e.clientY - down.current.y);
     if (dx + dy > 4) {
@@ -384,6 +500,7 @@ export default function App() {
     }
   };
   const onClick = () => {
+    if (fishing) return; // clicks are part of play, not "open details"
     if (dragged.current) return; // it was a drag, not a click
     invoke('open_details').catch(() => {});
   };
@@ -412,7 +529,7 @@ export default function App() {
   // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
   // to a content sit for the reaction window. Otherwise show the real mood.
   const effectiveState: CatState =
-    greeting || (fed && state === 'exhausted') ? 'playing' : state;
+    fishing || greeting || (fed && state === 'exhausted') ? 'playing' : state;
 
   // Expressive pose override — the new art (cream only). Priority, highest
   // first: petting/holding in grab → purr; then Roam flourishes. Each maps to a
@@ -471,7 +588,7 @@ export default function App() {
     >
       {/* Decorative furniture row (Roam only — the grab window would clip it).
           Rendered before the cat so the cat always sits in front of its props. */}
-      {!grab && (
+      {!grab && !fishing && (
         <FurnitureBaseline
           color={config.catColor}
           visibleKinds={visibleFurniture}
@@ -483,7 +600,7 @@ export default function App() {
           transport (LAN or remote room) is live, so this shows nothing for the
           default local setup and covers remote-only sessions too.
           `getSelf`/`selfPlayful` let a visitor drift over to play. */}
-      {!grab && (
+      {!grab && !fishing && (
         <PeerCats
           peers={peers}
           getSelf={() => ({ x: catXRef.current, y: catYRef.current })}
@@ -494,7 +611,7 @@ export default function App() {
       {/* Plaything the cat reacts to (Roam only). The outer element is glided
           imperatively via flyRef; the inner element carries the per-kind CSS
           flourish (roll / sway / dip / flutter). */}
-      {!grab && plaything && (
+      {!grab && !fishing && plaything && (
         <div ref={flyRef} className="plaything" aria-hidden>
           <div
             className={`plaything-inner pt-${plaything.kind}${
@@ -516,7 +633,7 @@ export default function App() {
       )}
 
       {/* Feed sparkle at the bowl (Roam only). */}
-      {!grab && fed && (
+      {!grab && !fishing && fed && (
         <div className="feed-sparkle" aria-hidden>
           <span>✨</span>
           <span>🍚</span>
@@ -627,6 +744,32 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Fishing (teaser) play: a string from the corner to a lure that tracks
+          the cursor. Purely visual — movement is driven imperatively by the rAF
+          loop above; the window itself captures the cursor (Rust). */}
+      {fishing && (
+        <div className="fishing-layer" aria-hidden>
+          <svg className="fishing-string" width="100%" height="100%">
+            <line
+              ref={rodLineRef}
+              x1={window.innerWidth - 36}
+              y1={20}
+              x2={window.innerWidth - 36}
+              y2={20}
+              stroke="rgba(90,75,60,0.7)"
+              strokeWidth={1.6}
+            />
+          </svg>
+          <div className="rod-handle" />
+          <div className="lure" ref={lureElRef}>
+            <FishingRod />
+          </div>
+          <div className="fishing-hint">
+            🎣 마우스를 움직여 고양이랑 놀아주세요 · <b>Esc</b>로 종료
+          </div>
+        </div>
+      )}
     </div>
   );
 }
