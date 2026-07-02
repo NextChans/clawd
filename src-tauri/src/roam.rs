@@ -54,14 +54,15 @@ const ANCHOR_SNAP: f64 = 24.0;
 /// px), or `None` for free roam. The x-fractions match `FURNITURE_X` in the
 /// frontend (tower 0.20 / cushion 0.50 / bowl 0.80) so the cat lands on its
 /// prop; `h`/`w` are the work-area logical size.
-///  - `sleeping`         → curl up on the cushion (center).
+///  - `sleeping`         → curl up on the cushion (bottom-right corner, out of
+///                         the way of your work).
 ///  - `alert` / `angry`  → perch on the cat-tower platform (left, lifted).
 ///  - `exhausted`        → slump by the food bowl (right).
 fn anchor_pos(state: &str, w: f64, h: f64) -> Option<(f64, f64)> {
     let ground_y = h - CAT_SIZE - FURN_GROUND;
     let center = |frac: f64| frac * w - CAT_SIZE / 2.0;
     match state {
-        "sleeping" => Some((center(0.50), ground_y)),
+        "sleeping" => Some((center(0.88), ground_y)),
         "alert" | "angry" => Some((center(0.20), ground_y - TOWER_LIFT)),
         "exhausted" => Some((center(0.80), ground_y)),
         _ => None,
