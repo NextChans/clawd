@@ -1,7 +1,7 @@
 {
   "name": "clawd",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "description": "Cute floating cat that shows Claude Code usage on macOS",
   "license": "MIT",
