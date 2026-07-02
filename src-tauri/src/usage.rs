@@ -34,6 +34,13 @@ const RETAIN_DAYS: i64 = 40;
 const TOWER_TIER2_MIN_TOKENS: u64 = 20_000_000;
 const TOWER_TIER3_MIN_TOKENS: u64 = 100_000_000;
 
+/// Rolling rate-history window. One sample is appended per `collect()` call; the
+/// poller ticks every 30s, so 60 samples cover the trailing ~30 minutes. This
+/// drives the "sustained high activity" (exhausted) signal on the frontend. The
+/// history lives in memory only (not persisted), so a fresh launch needs ~30
+/// minutes of continuous activity to fill it before exhausted can trigger.
+const RATE_HISTORY_MAX: usize = 60;
+
 /// USD per **million** tokens, matched by substring against the model id.
 /// Rough but current figures — see README for the tuning note. Order matters:
 /// more specific ids first, generic family name last.
@@ -88,6 +95,12 @@ pub struct Usage {
     /// Tokens seen in the trailing 5 minutes and the derived per-minute rate.
     pub tokens_last_5min: u64,
     pub rate_per_min: u64,
+
+    /// Rolling per-minute rate samples, oldest first, one appended per
+    /// `collect()` (≈30s cadence). Capped at [`RATE_HISTORY_MAX`] (~30 min). In
+    /// memory only — reset on app restart. Powers the frontend's sustained-high
+    /// -activity → `exhausted` classification.
+    pub rate_history: Vec<f64>,
 
     /// True when a turn landed within the last 30 seconds.
     pub session_active: bool,
@@ -219,6 +232,13 @@ struct FileEntry {
 fn cache() -> &'static Mutex<HashMap<PathBuf, FileEntry>> {
     static C: OnceLock<Mutex<HashMap<PathBuf, FileEntry>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Rolling per-minute rate samples, shared across `collect()` calls. In-memory
+/// only; cleared on process exit (see [`RATE_HISTORY_MAX`]).
+fn rate_history() -> &'static Mutex<Vec<f64>> {
+    static H: OnceLock<Mutex<Vec<f64>>> = OnceLock::new();
+    H.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// What to do with a file this tick, decided from cached mtime/size vs. current.
@@ -458,6 +478,19 @@ pub fn collect() -> Usage {
     };
 
     out.rate_per_min = out.tokens_last_5min / 5;
+
+    // Append this tick's per-minute rate to the rolling window, drop anything
+    // beyond the trailing ~30 minutes, and hand the snapshot to the frontend.
+    {
+        let mut hist = rate_history().lock().unwrap();
+        hist.push(out.tokens_last_5min as f64 / 5.0);
+        let overflow = hist.len().saturating_sub(RATE_HISTORY_MAX);
+        if overflow > 0 {
+            hist.drain(0..overflow);
+        }
+        out.rate_history = hist.clone();
+    }
+
     // Large finite sentinel rather than INFINITY — serde_json rejects
     // non-finite floats. "No data ever" reads as very idle.
     out.idle_minutes = last_activity

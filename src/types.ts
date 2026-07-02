@@ -12,6 +12,10 @@ export interface Usage {
 
   tokens_last_5min: number;
   rate_per_min: number;
+  /** Rolling per-minute rate samples, oldest first, one per ~30s poll (capped
+   * at ~30 min / 60 samples). In-memory on the Rust side, so it resets on app
+   * restart. Drives the sustained-high-activity → `exhausted` classification. */
+  rate_history?: number[];
 
   session_active: boolean;
   idle_minutes: number;
@@ -44,6 +48,7 @@ export const EMPTY_USAGE: Usage = {
   today_messages: 0,
   tokens_last_5min: 0,
   rate_per_min: 0,
+  rate_history: [],
   session_active: false,
   idle_minutes: 525600,
   week_tokens: 0,
@@ -81,10 +86,6 @@ export const CAT_COLORS: { id: CatColor; label: string; swatch: string }[] = [
 ];
 
 export interface Config {
-  /** Daily cumulative-token ceiling above which a busy cat reads as `exhausted`
-   * (tokens). This is an *activity* signal, not a bill — the user is on a
-   * Claude Team flat-rate plan, so there is no per-token cost to cap. */
-  exhaustedTokenThreshold: number;
   thresholds: Thresholds;
   catColor: CatColor;
   /** Whether the app registers a macOS LaunchAgent to start at login. Opt-in:
@@ -94,7 +95,6 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  exhaustedTokenThreshold: 50_000_000,
   thresholds: {
     low: 10_000,
     mid: 50_000,

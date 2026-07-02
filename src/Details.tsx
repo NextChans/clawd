@@ -181,19 +181,14 @@ export default function Details() {
         </button>
 
         <div className="d-thresholds">
-          <div className="d-thresholds-title">상태 임계값 (tokens/min · exhausted은 일일 누적)</div>
+          <div className="d-thresholds-title">상태 임계값 (tokens/min)</div>
           <Slider label="curious ▸" value={config.thresholds.low} max={50_000} onChange={(v) => patchThreshold('low', v)} />
           <Slider label="active ▸" value={config.thresholds.mid} max={150_000} onChange={(v) => patchThreshold('mid', v)} />
           <Slider label="alert ▸" value={config.thresholds.high} max={400_000} onChange={(v) => patchThreshold('high', v)} />
           <Slider label="angry ▸" value={config.thresholds.veryHigh} max={800_000} onChange={(v) => patchThreshold('veryHigh', v)} />
-          <Slider
-            label="exhausted ▸"
-            value={config.exhaustedTokenThreshold}
-            min={10_000_000}
-            max={200_000_000}
-            step={5_000_000}
-            onChange={(v) => patch({ exhaustedTokenThreshold: v })}
-          />
+          <p className="d-thresholds-note">
+            *Exhausted는 최근 30분간 rate가 alert 임계 이상으로 지속되면 자동 진입
+          </p>
         </div>
 
         <p className="d-foot">

@@ -14,13 +14,11 @@ function getStore(): Promise<Store> {
 }
 
 // Rebuild only the fields we know about. Legacy keys from older versions
-// (e.g. `dailyBudget`, `notifyEnabled`) are silently dropped, and any missing
-// key — including a brand-new `exhaustedTokenThreshold` on an upgraded install
-// — falls back to its current default.
+// (e.g. `dailyBudget`, `notifyEnabled`, `exhaustedTokenThreshold`) are silently
+// dropped, and any missing key falls back to its current default.
 function merge(partial: Partial<Config> | undefined | null): Config {
   const p = partial ?? {};
   return {
-    exhaustedTokenThreshold: p.exhaustedTokenThreshold ?? DEFAULT_CONFIG.exhaustedTokenThreshold,
     catColor: p.catColor ?? DEFAULT_CONFIG.catColor,
     autostart: p.autostart ?? DEFAULT_CONFIG.autostart,
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
