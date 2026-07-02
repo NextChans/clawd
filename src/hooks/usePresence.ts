@@ -108,11 +108,19 @@ export type RoomStatus = 'off' | 'hosting' | 'joined';
 export function useRemoteRoom(config: Config, state: CatState) {
   const [status, setStatus] = useState<RoomStatus>('off');
   const [code, setCode] = useState<string>('');
+  // Connection diagnostics: whether we've joined the room and to how many peers.
+  const [joined, setJoined] = useState(false);
+  const [neighbors, setNeighbors] = useState(0);
 
   useEffect(() => {
-    const un = listen<string>('remote-room-code', (e) => setCode(e.payload));
+    const unCode = listen<string>('remote-room-code', (e) => setCode(e.payload));
+    const unStatus = listen<[boolean, number]>('remote-status', (e) => {
+      setJoined(e.payload[0]);
+      setNeighbors(e.payload[1]);
+    });
     return () => {
-      un.then((off) => off());
+      unCode.then((off) => off());
+      unStatus.then((off) => off());
     };
   }, []);
 
@@ -144,7 +152,9 @@ export function useRemoteRoom(config: Config, state: CatState) {
     await invoke('presence_remote_leave').catch(() => {});
     setStatus('off');
     setCode('');
+    setJoined(false);
+    setNeighbors(0);
   }, []);
 
-  return { status, code, open, join, leave };
+  return { status, code, joined, neighbors, open, join, leave };
 }
