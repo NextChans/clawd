@@ -314,9 +314,14 @@ async fn run_room(
     on_room: OnRoom,
     on_status: OnStatus,
 ) -> anyhow::Result<()> {
+    // `discovery_n0` publishes our NodeId → address (incl. relay) to n0's DNS
+    // and resolves peers the same way, so a joiner can reach the host across
+    // different networks even if the shared ticket's addresses are LAN-only.
+    // Without it, cross-network rooms only linked up on the same LAN.
     let endpoint = Endpoint::builder()
         .secret_key(secret)
         .relay_mode(RelayMode::Default)
+        .discovery_n0()
         .bind()
         .await?;
     let gossip = Gossip::builder().spawn(endpoint.clone());
