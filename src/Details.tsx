@@ -276,6 +276,13 @@ export default function Details() {
               <div className="d-room-status">
                 {room.status === 'hosting' ? '방 열림 · 이 코드를 친구에게 공유' : '방에 참가됨'}
               </div>
+              <div className="d-room-conn">
+                {!room.joined
+                  ? '⏳ 연결 중…'
+                  : room.neighbors > 0
+                    ? `🟢 연결됨 · 친구 ${room.neighbors}명`
+                    : '🟡 방에 있음 · 친구 기다리는 중 (안 잡히면 방화벽/네트워크일 수 있어요)'}
+              </div>
               {room.code ? (
                 <div className="d-room-row">
                   <input

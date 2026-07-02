@@ -296,6 +296,11 @@ impl FromStr for RoomTicket {
 /// it to share).
 type OnRoom = Arc<dyn Fn(String) + Send + Sync>;
 
+/// Called with `(joined, neighbor_count)` so the UI can show whether we've
+/// connected and to how many peers — the key signal for diagnosing a remote
+/// room that isn't linking up across networks.
+type OnStatus = Arc<dyn Fn(bool, usize) + Send + Sync>;
+
 /// The async heart of the iroh transport: build endpoint + gossip, join/open
 /// the room, then broadcast our latest payload on a cadence while handing
 /// received payloads to `on_recv`, until `running` clears.
@@ -307,6 +312,7 @@ async fn run_room(
     running: Arc<AtomicBool>,
     on_recv: OnRecv,
     on_room: OnRoom,
+    on_status: OnStatus,
 ) -> anyhow::Result<()> {
     let endpoint = Endpoint::builder()
         .secret_key(secret)
@@ -337,7 +343,12 @@ async fn run_room(
     }
     let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
 
+    // Connecting → the join future resolves once we're subscribed (the opener
+    // resolves immediately; a joiner waits until it links to a bootstrap peer).
+    on_status(false, 0);
     let (sender, mut receiver) = gossip.subscribe_and_join(topic, bootstrap_ids).await?.split();
+    let mut neighbors: usize = 0;
+    on_status(true, neighbors);
 
     let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
     loop {
@@ -359,6 +370,14 @@ async fn run_room(
                         if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
                             on_recv(payload);
                         }
+                    }
+                    Ok(Some(Event::NeighborUp(_))) => {
+                        neighbors += 1;
+                        on_status(true, neighbors);
+                    }
+                    Ok(Some(Event::NeighborDown(_))) => {
+                        neighbors = neighbors.saturating_sub(1);
+                        on_status(true, neighbors);
                     }
                     Ok(Some(_)) => {}
                     Ok(None) | Err(_) => break,
@@ -397,7 +416,7 @@ impl IrohTransport {
         *self.local.lock().unwrap() = Some(payload);
     }
 
-    fn start(&mut self, on_recv: OnRecv, on_room: OnRoom) -> Result<(), String> {
+    fn start(&mut self, on_recv: OnRecv, on_room: OnRoom, on_status: OnStatus) -> Result<(), String> {
         let secret: SecretKey = self.secret_hex.parse().map_err(|e| format!("bad key: {e}"))?;
         let room = match &self.room_code {
             Some(code) => Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?),
@@ -411,7 +430,7 @@ impl IrohTransport {
                 Ok(rt) => rt,
                 Err(_) => return,
             };
-            let _ = rt.block_on(run_room(secret, room, local, running, on_recv, on_room));
+            let _ = rt.block_on(run_room(secret, room, local, running, on_recv, on_room, on_status));
         }));
         Ok(())
     }
@@ -568,7 +587,11 @@ impl Presence {
         let on_room: OnRoom = Arc::new(move |room_code: String| {
             let _ = app_room.emit("remote-room-code", room_code);
         });
-        transport.start(on_recv, on_room)?;
+        let app_status = app.clone();
+        let on_status: OnStatus = Arc::new(move |joined: bool, neighbors: usize| {
+            let _ = app_status.emit("remote-status", (joined, neighbors));
+        });
+        transport.start(on_recv, on_room, on_status)?;
         *self.iroh.lock().unwrap() = Some(transport);
         self.iroh_on.store(true, Ordering::SeqCst);
         self.ensure_prune(app);
