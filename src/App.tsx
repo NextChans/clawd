@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Cat } from './components/Cat/Cat';
-import { FurnitureBaseline } from './components/Furniture/Furniture';
+import { FurnitureBaseline, FurnitureKind } from './components/Furniture/Furniture';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
@@ -366,6 +366,14 @@ export default function App() {
   const effectiveState: CatState =
     greeting || (fed && state === 'exhausted') ? 'playing' : state;
 
+  // On-demand furniture: a prop appears only while its mood is active (keyed on
+  // the *raw* mood so it lines up with `roam.rs`'s wander target), plus the bowl
+  // during a feed reaction. Idle moods (playing/curious/active) show nothing.
+  const visibleFurniture = new Set<FurnitureKind>();
+  if (state === 'sleeping') visibleFurniture.add('cushion');
+  if (state === 'alert' || state === 'angry') visibleFurniture.add('tower');
+  if (state === 'exhausted' || fed) visibleFurniture.add('bowl');
+
   // FX layer classes — a flourish/interaction stack on the `.cat-fx` wrapper.
   const fx = ['cat-fx'];
   if (greeting) fx.push('wiggle');
@@ -387,7 +395,7 @@ export default function App() {
     <div className={grab ? 'stage grab' : 'stage'}>
       {/* Decorative furniture row (Roam only — the grab window would clip it).
           Rendered before the cat so the cat always sits in front of its props. */}
-      {!grab && <FurnitureBaseline color={config.catColor} />}
+      {!grab && <FurnitureBaseline color={config.catColor} visibleKinds={visibleFurniture} />}
 
       {/* Butterfly the cat chases (Roam only). Driven imperatively via flyRef. */}
       {!grab && butterfly && (

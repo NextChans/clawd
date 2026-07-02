@@ -36,11 +36,29 @@ function furnitureUrl(color: CatColor, kind: FurnitureKind): string | undefined 
   return undefined;
 }
 
-/** A single decorative prop pinned to the bottom baseline. Click-through. */
-export function Furniture({ kind, color }: { kind: FurnitureKind; color: CatColor }) {
+/**
+ * A single decorative prop pinned to the bottom baseline. Click-through.
+ * Always mounted so it can fade in/out; `visible` toggles the CSS transition.
+ */
+export function Furniture({
+  kind,
+  color,
+  visible,
+}: {
+  kind: FurnitureKind;
+  color: CatColor;
+  visible: boolean;
+}) {
   const src = useMemo(() => furnitureUrl(color, kind), [color, kind]);
   if (!src) return null;
-  return <img src={src} className={`furniture furniture-${kind}`} alt="" draggable={false} />;
+  return (
+    <img
+      src={src}
+      className={`furniture furniture-${kind}${visible ? ' visible' : ''}`}
+      alt=""
+      draggable={false}
+    />
+  );
 }
 
 /**
@@ -48,13 +66,24 @@ export function Furniture({ kind, color }: { kind: FurnitureKind; color: CatColo
  * food bowl (right). Purely decorative and click-through; the cat wanders onto
  * these props based on its mood (see `roam.rs`). Rendered only in Roam mode —
  * the shrunken Grab window would clip them off-screen.
+ *
+ * Props are *on-demand*: rather than sitting on the baseline permanently, each
+ * fades in only while its mood is active (cushion↔sleeping, tower↔alert/angry,
+ * bowl↔exhausted or a feed reaction) and fades back out when the mood passes,
+ * so the cat reads as heading *toward* whatever prop just appeared.
  */
-export function FurnitureBaseline({ color }: { color: CatColor }) {
+export function FurnitureBaseline({
+  color,
+  visibleKinds,
+}: {
+  color: CatColor;
+  visibleKinds: Set<FurnitureKind>;
+}) {
   return (
     <div className="furniture-baseline" aria-hidden>
-      <Furniture kind="tower" color={color} />
-      <Furniture kind="cushion" color={color} />
-      <Furniture kind="bowl" color={color} />
+      <Furniture kind="tower" color={color} visible={visibleKinds.has('tower')} />
+      <Furniture kind="cushion" color={color} visible={visibleKinds.has('cushion')} />
+      <Furniture kind="bowl" color={color} visible={visibleKinds.has('bowl')} />
     </div>
   );
 }
