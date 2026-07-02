@@ -328,3 +328,68 @@
   color: #fff;
   font-weight: 600;
 }
+
+/* ---- social mode: nickname field ---- */
+.d-nick { gap: 6px; }
+.d-nick-input {
+  padding: 6px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font-size: 13px;
+}
+.d-nick-input:focus {
+  outline: none;
+  border-color: #e5794b;
+}
+.d-nick-note {
+  font-size: 11px;
+  opacity: 0.6;
+  line-height: 1.4;
+}
+
+/* ---- social mode: online peers roster ---- */
+.d-peers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.d-peers-head {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.d-peers-empty {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.d-peers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.d-peer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  font-size: 12px;
+}
+.d-peer-badge { font-size: 13px; }
+.d-peer-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.d-peer-act {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 11px;
+}

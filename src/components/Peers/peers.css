@@ -1,0 +1,92 @@
+/* =========================================================
+   Peer cats (social mode) — visiting cats gathered along the
+   bottom-left of the overlay. Click-through decoration, so the
+   strip never eats pointer events meant for the desktop.
+
+   Motion is layered so nothing fights over `transform`:
+   - .peer-cat   → framer-motion (enter/exit/layout), inline transform
+   - .peer-pace  → slow side-to-side pacing (CSS translateX)
+   - .peer-sprite→ gentle bob (CSS translateY)
+   ========================================================= */
+.peer-strip {
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  max-width: min(70vw, 900px);
+  flex-wrap: wrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.peer-cat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 76px;
+}
+
+.peer-pace {
+  animation: peer-pace 5.5s ease-in-out infinite;
+}
+@keyframes peer-pace {
+  0%, 100% { transform: translateX(-6px); }
+  50% { transform: translateX(6px); }
+}
+
+.peer-sprite {
+  width: 72px;
+  height: 72px;
+  /* Peers read as slightly further away than your own cat. */
+  opacity: 0.94;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.22));
+  animation: peer-bob 3.8s ease-in-out infinite;
+}
+@keyframes peer-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.peer-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 96px;
+  margin-bottom: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(28, 24, 22, 0.72);
+  color: #fbf7f0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(3px);
+}
+.peer-badge { font-size: 12px; }
+.peer-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* "👋 nickname" bubble shown for a few seconds when a peer first appears. */
+.peer-greet {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e5794b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peer-pace,
+  .peer-sprite { animation: none; }
+}

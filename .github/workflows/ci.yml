@@ -1,0 +1,44 @@
+name: CI
+
+# Compile-check every branch push and PR on a macOS runner — the app only
+# builds on macOS (Tauri needs the platform webview), so this is where a
+# `cargo check` + frontend type-check/build can actually validate a change.
+# Release builds live in release.yml and fire only on `v*` tags; this never
+# runs on tags, so the two don't overlap.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS deps
+        run: npm ci
+
+      # tsc (type-check) + vite build.
+      - name: Type-check + build frontend
+        run: npm run build
+
+      # Compile-check the Rust side against the committed lockfile. No signing
+      # key needed — this only checks that it builds.
+      - name: cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked

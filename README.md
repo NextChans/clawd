@@ -54,8 +54,14 @@ to drag, click, or configure it.
 - **🚀 Auto-start** — optional macOS Login Item.
 - **📊 Usage visualization** — model donut, hourly sparkline, weekly heatmap, and
   a "vs. yesterday" delta.
-- **🔒 Private by design** — no login, no network calls for stats; it parses your
-  local `~/.claude` logs and nothing leaves your machine.
+- **🐈‍⬛ Social mode (LAN, experimental)** — opt in and other clawd cats on the
+  same network wander onto your screen, each showing a nickname and a *coarse*
+  activity vibe (🔥 busy / 💤 idle). Discovery is pure peer-to-peer over mDNS —
+  **no server**. Only a nickname, coat color, mood, and activity bucket are
+  shared; **never** token counts, cost, or project names. Off by default.
+- **🔒 Private by design** — no login and no network calls for stats: it parses
+  your local `~/.claude` logs and nothing leaves your machine. The one exception
+  is Social mode above, which is strictly opt-in and shares only coarse signals.
 
 ---
 
