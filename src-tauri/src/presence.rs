@@ -339,27 +339,28 @@ async fn run_room(
         None => (TopicId::from_bytes(rand::random()), vec![]),
     };
 
-    // Wait (bounded) for a home relay to be assigned before snapshotting our
-    // address, so the shared code carries a relay URL. Without it the node addr
-    // can be LAN-only and a joiner on another network has no path to us — the
-    // cause of rooms that link on the same Wi-Fi but stay stuck (🟡) across
-    // networks. Bounded so a relay-blocked network doesn't hang room creation.
-    let _ = tokio::time::timeout(
-        Duration::from_secs(6),
-        endpoint.home_relay().initialized(),
-    )
-    .await;
+    // Wait for a home relay before minting the code, so it carries a relay URL —
+    // without it the node addr is LAN-only and a joiner on another network has
+    // no path to us (rooms that link on the same Wi-Fi but stay stuck 🟡 across
+    // networks). `home_relay().initialized()` can resolve on an *empty* value,
+    // so instead poll for a non-empty relay set (up to ~15s). Bounded so a
+    // relay-blocked network doesn't hang room creation.
+    let mut relay_str = String::new();
+    for _ in 0..30 {
+        let relays = endpoint.home_relay().get();
+        if !relays.is_empty() {
+            relay_str = relays.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(", ");
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 
     // Surface the relay we got — the decisive clue when a room won't link up
     // across networks (no relay ⇒ that network is blocking it).
-    let relays = endpoint.home_relay().get();
-    if relays.is_empty() {
+    if relay_str.is_empty() {
         on_debug("릴레이 없음 — 이 네트워크가 릴레이를 막는 듯".to_string());
     } else {
-        on_debug(format!(
-            "릴레이 {}",
-            relays.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(", ")
-        ));
+        on_debug(format!("릴레이 {relay_str}"));
     }
 
     // Publish a shareable code that includes our own address, so joiners can
