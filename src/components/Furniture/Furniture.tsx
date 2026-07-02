@@ -62,6 +62,12 @@ function furnitureUrl(color: CatColor, asset: string): string | undefined {
   return fallback ? furnitureUrl(fallback, asset) : undefined;
 }
 
+/** Cushion sprite URL for a color (with the same fallback chain). Exported so a
+ * sleeping peer cat can show its own little cushion, not just the baseline one. */
+export function cushionUrl(color: CatColor): string | undefined {
+  return furnitureUrl(color, 'cushion');
+}
+
 /**
  * A single decorative prop pinned to the bottom baseline. Click-through.
  * Always mounted so it can fade in/out; `visible` toggles the CSS transition.
