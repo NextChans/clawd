@@ -19,6 +19,38 @@ to drag, click, or configure it.
 
 ---
 
+## Install
+
+Grab the latest **`.dmg`** from the
+[**Releases**](https://github.com/NextChans/clawd/releases) page, open it, and
+drag **clawd.app** into `/Applications`. The build is a **universal binary**
+(Apple Silicon + Intel).
+
+> The `.dmg` is **not code-signed or notarized** (no Apple Developer account),
+> so macOS Gatekeeper will complain on first launch — see below.
+
+## First run (Gatekeeper)
+
+Because the app is unsigned, double-clicking it the first time shows
+*"clawd" cannot be opened because it is from an unidentified developer* (or
+*"is damaged"* on newer macOS). To get past it **once**:
+
+1. In `/Applications`, **right-click** (or Ctrl-click) **clawd.app** → **열기 / Open**.
+2. In the dialog, click **그래도 열기 / Open** again.
+
+macOS remembers the choice, so subsequent launches open normally. If the
+right-click route is blocked, you can also clear the quarantine flag manually:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/clawd.app
+```
+
+clawd is a **menu-bar app** (no dock icon) — after launch, look for the 🐾/✋
+tray icon. Check for updates any time via **tray → 새 버전 확인…** (opens the
+Releases page in your browser).
+
+---
+
 ## Concept
 
 - **Floating, no chrome** — transparent background, no title bar, no shadow.
@@ -80,7 +112,47 @@ npm run tauri dev
 npm run tauri build
 ```
 
-The signed/bundled `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
+The bundled `.app` and `.dmg` land in `src-tauri/target/release/bundle/`
+(**unsigned** — see [First run](#first-run-gatekeeper)).
+
+To produce the **universal** (Apple Silicon + Intel) DMG that Releases ship —
+the same artifact CI builds — and open the output folder:
+
+```sh
+npm run release:local
+# → src-tauri/target/universal-apple-darwin/release/bundle/dmg/
+```
+
+> Universal builds compile the Rust core **twice** (both arches), so expect
+> 5–15 min, especially the first time.
+
+## Release process
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`): pushing
+a **`v*` tag** triggers a `macos-latest` runner that builds the universal DMG
+and publishes a Release with auto-generated notes and the DMG attached.
+
+```sh
+npm run version:bump 0.6.0    # syncs package.json + Cargo.toml + tauri.conf.json
+git commit -am "chore: bump to 0.6.0"
+git tag v0.6.0
+git push && git push --tags   # tag push kicks off the Release workflow
+```
+
+Watch the run under the repo's **Actions** tab; the DMG appears on the Release
+once it's green.
+
+> **Cost note:** macOS Actions minutes are limited on the free tier
+> (~300 min/month for personal accounts, and macOS runners bill at 10×), and
+> universal builds are slow — so tag deliberately, not on every commit.
+
+**Fallback** if CI fails — build and publish locally with the `gh` CLI:
+
+```sh
+npm run release:local   # or: npm run tauri:build:universal
+gh release create v0.6.0 --generate-notes \
+  src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+```
 
 ## Permissions (macOS)
 
@@ -207,6 +279,17 @@ clawd/
 
 ## Changelog
 
+- **v0.5.0** — **Automated DMG releases + in-app update check.** Pushing a
+  `v*` tag now builds a **universal (Apple Silicon + Intel) DMG** on GitHub
+  Actions and publishes a Release with the DMG attached
+  (`.github/workflows/release.yml`). Added `scripts/bump-version.mjs`
+  (`npm run version:bump <ver>`) to keep the version in lockstep across
+  `package.json`, `src-tauri/Cargo.toml`, and `tauri.conf.json`, plus
+  `npm run release:local` for a one-shot local universal build. New tray item
+  **새 버전 확인…** opens the Releases page in the browser (the repo is private,
+  so this rides the user's existing GitHub session rather than an unauthenticated
+  API call). Builds are still **unsigned** — the README documents the Gatekeeper
+  first-run step.
 - **v0.4.0** — **PNG sprite cat + coat colors + tooltip auto-flip + tray title
   sync.** The cat now renders from **PNG sprites**
   (`src/assets/cat/<color>/<pose>.png`) so the character can be authored as real

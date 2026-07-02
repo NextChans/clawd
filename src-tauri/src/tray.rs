@@ -26,6 +26,8 @@ pub fn build(app: &App) -> tauri::Result<()> {
     let toggle = MenuItem::with_id(app, "toggle_cat", "고양이 숨기기 / 보이기", true, None::<&str>)?;
     let reset = MenuItem::with_id(app, "reset_pos", "위치 초기화", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "상세 · 설정…", true, None::<&str>)?;
+    let check_update =
+        MenuItem::with_id(app, "check_update", "새 버전 확인…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "종료 (Quit)", true, None::<&str>)?;
@@ -33,7 +35,15 @@ pub fn build(app: &App) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
-            &roam_item, &grab_item, &sep1, &toggle, &reset, &settings, &sep2, &quit,
+            &roam_item,
+            &grab_item,
+            &sep1,
+            &toggle,
+            &reset,
+            &settings,
+            &check_update,
+            &sep2,
+            &quit,
         ],
     )?;
 
@@ -59,6 +69,15 @@ pub fn build(app: &App) -> tauri::Result<()> {
             }
             "reset_pos" => crate::reset_position(app.clone()),
             "settings" => crate::open_details(app.clone()),
+            "check_update" => {
+                // The repo is private, so the Releases API 404s without auth.
+                // Simplest reliable path: open the Releases page in the user's
+                // browser, which already carries their GitHub session.
+                use tauri_plugin_opener::OpenerExt;
+                let _ = app
+                    .opener()
+                    .open_url("https://github.com/NextChans/clawd/releases", None::<&str>);
+            }
             "quit" => app.exit(0),
             _ => {}
         })
