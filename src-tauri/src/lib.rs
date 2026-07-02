@@ -101,6 +101,11 @@ pub struct AppState {
     /// `false` = **Roam** (click-through, auto-wander), `true` = **Grab** (the
     /// cat captures the mouse for drag/click and holds still).
     grabbed: AtomicBool,
+    /// **Fishing** (teaser) play: the full-screen overlay stops being
+    /// click-through so it can follow the cursor, the wander loop freezes, and
+    /// the frontend drives the cat to chase the lure. Mutually exclusive with
+    /// `grabbed`.
+    fishing: AtomicBool,
     /// Latest `CatState` the frontend reported, used to tune the wander.
     cat_state: Mutex<String>,
     /// The cat's current logical top-left position within the window (CSS px).
@@ -115,6 +120,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             grabbed: AtomicBool::new(false),
+            fishing: AtomicBool::new(false),
             cat_state: Mutex::new(DEFAULT_CAT_STATE.to_string()),
             cat_pos: Mutex::new(None),
             last_feed: Mutex::new(None),
@@ -123,9 +129,15 @@ impl Default for AppState {
 }
 
 impl AppState {
-    /// True when in Roam mode (click-through + wandering).
+    /// True when in Roam mode (click-through + wandering). Both Grab and Fishing
+    /// suspend the wander loop, so neither counts as Roam.
     fn is_roam(&self) -> bool {
-        !self.grabbed.load(Ordering::SeqCst)
+        !self.grabbed.load(Ordering::SeqCst) && !self.fishing.load(Ordering::SeqCst)
+    }
+
+    /// True while the teaser (fishing) play session is active.
+    pub(crate) fn is_fishing(&self) -> bool {
+        self.fishing.load(Ordering::SeqCst)
     }
 
     /// A snapshot of the last reported cat mood.
@@ -171,10 +183,13 @@ fn set_mode(app: AppHandle, grab: bool) {
     apply_mode(&app, grab);
 }
 
-/// Current mode as `"roam"` / `"grab"` for the frontend to sync against.
+/// Current mode as `"roam"` / `"grab"` / `"fishing"` for the frontend to sync
+/// against.
 #[tauri::command]
 fn get_mode(state: tauri::State<'_, AppState>) -> String {
-    if state.grabbed.load(Ordering::SeqCst) {
+    if state.fishing.load(Ordering::SeqCst) {
+        "fishing".into()
+    } else if state.grabbed.load(Ordering::SeqCst) {
         "grab".into()
     } else {
         "roam".into()
@@ -186,6 +201,27 @@ fn get_mode(state: tauri::State<'_, AppState>) -> String {
 #[tauri::command]
 fn set_cat_state(state: tauri::State<'_, AppState>, cat_state: String) {
     *state.cat_state.lock().unwrap() = cat_state;
+}
+
+/// Start teaser (fishing) play from the frontend (mirrors the tray toggle).
+#[tauri::command]
+fn enter_fishing(app: AppHandle) {
+    apply_fishing(&app, true);
+}
+
+/// End teaser play (Esc). Position is synced separately via `report_cat_pos`
+/// when the frontend's fishing loop tears down, so this just flips the mode.
+#[tauri::command]
+fn exit_fishing(app: AppHandle) {
+    apply_fishing(&app, false);
+}
+
+/// Sync Rust's cat position to where the frontend last moved it. Used when
+/// leaving fishing (the frontend drove the cat itself while playing) so the
+/// wander loop resumes from the right spot rather than a stale one.
+#[tauri::command]
+fn report_cat_pos(state: tauri::State<'_, AppState>, x: f64, y: f64) {
+    state.set_cat_pos(x, y);
 }
 
 /// Begin an OS-level window drag (called when dragging the cat in grab mode).
@@ -467,9 +503,10 @@ fn enter_roam_window(app: &AppHandle, win: &WebviewWindow) {
 /// click-through overlay and resumes wandering. Broadcasts `mode-change`
 /// (`"roam"` / `"grab"`) so the frontend can react, and keeps the tray in sync.
 pub fn apply_mode(app: &AppHandle, grab: bool) {
-    app.state::<AppState>()
-        .grabbed
-        .store(grab, Ordering::SeqCst);
+    let st = app.state::<AppState>();
+    // Roam/Grab always leaves fishing (they're mutually exclusive modes).
+    st.fishing.store(false, Ordering::SeqCst);
+    st.grabbed.store(grab, Ordering::SeqCst);
 
     if grab {
         // Stay click-through for now: the window is still full-screen, so
@@ -484,7 +521,38 @@ pub fn apply_mode(app: &AppHandle, grab: bool) {
     }
 
     let _ = app.emit("mode-change", if grab { "grab" } else { "roam" });
-    tray::update_mode(app, grab);
+    tray::update_mode_str(app, if grab { "grab" } else { "roam" });
+}
+
+/// Enter or leave fishing (teaser) play. Entering keeps the full-screen overlay
+/// but stops it being click-through so the lure can follow the cursor, and
+/// freezes the wander loop; the frontend then drives the cat to chase the lure.
+/// Leaving re-arms click-through and resumes wandering from where the cat was
+/// left. Broadcasts `mode-change` (`"fishing"` / `"roam"`) and syncs the tray.
+pub fn apply_fishing(app: &AppHandle, on: bool) {
+    let st = app.state::<AppState>();
+    if on {
+        st.grabbed.store(false, Ordering::SeqCst);
+        st.fishing.store(true, Ordering::SeqCst);
+        if let Some(win) = app.get_webview_window("cat") {
+            // Make sure we're a full-screen overlay (we may be coming from the
+            // small Grab window), then capture the cursor so the lure follows it.
+            enter_roam_window(app, &win);
+            let _ = win.set_ignore_cursor_events(false);
+        }
+        let _ = app.emit("mode-change", "fishing");
+        tray::update_mode_str(app, "fishing");
+    } else {
+        st.fishing.store(false, Ordering::SeqCst);
+        // Re-arm click-through so the overlay stops blocking the desktop. We
+        // deliberately *don't* emit `cat-place`: the frontend drove the cat
+        // during play and keeps it exactly where it is (a `cat-place` would snap
+        // it to the stale pre-fishing spot). The frontend reports its final
+        // position via `report_cat_pos` as its fishing loop tears down.
+        apply_ignore_cursor(app, true);
+        let _ = app.emit("mode-change", "roam");
+        tray::update_mode_str(app, "roam");
+    }
 }
 
 /// First-launch overlay setup: size the window to the full work area, place the
@@ -580,6 +648,9 @@ pub fn run() {
             set_mode,
             get_mode,
             set_cat_state,
+            enter_fishing,
+            exit_fishing,
+            report_cat_pos,
             start_drag,
             open_details,
             hide_details,
@@ -639,7 +710,7 @@ pub fn run() {
 
             tray::build(app)?;
             // Reflect the initial mode (Roam) in the freshly-built tray.
-            tray::update_mode(&handle, false);
+            tray::update_mode_str(&handle, "roam");
             spawn_poller(handle.clone());
             roam::spawn(handle);
             Ok(())

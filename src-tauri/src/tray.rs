@@ -1,9 +1,10 @@
 //! Menu-bar tray: switch between Roam / Grab mode, show/hide the cat, reset its
 //! position, open settings, and quit.
 //!
-//! The two mode entries are `CheckMenuItem`s used as a radio pair (Tauri has no
-//! native radio group), kept mutually exclusive by [`update_mode`]. We stash
-//! their handles + the tray icon in [`TrayHandles`] so [`crate::apply_mode`] can
+//! The three mode entries (Roam / Grab / Fishing) are `CheckMenuItem`s used as a
+//! radio group (Tauri has no native one), kept mutually exclusive by
+//! [`update_mode_str`]. We stash their handles + the tray icon in
+//! [`TrayHandles`] so [`crate::apply_mode`] / [`crate::apply_fishing`] can
 //! reflect the current mode from anywhere (hotkey, command, menu click).
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
@@ -14,6 +15,7 @@ use tauri::{App, AppHandle, Manager, Wry};
 pub struct TrayHandles {
     pub roam_item: CheckMenuItem<Wry>,
     pub grab_item: CheckMenuItem<Wry>,
+    pub fish_item: CheckMenuItem<Wry>,
     pub tray: TrayIcon<Wry>,
 }
 
@@ -24,6 +26,14 @@ pub fn build(app: &App) -> tauri::Result<()> {
         app,
         "mode_grab",
         "🖐️ 잡기 (Grab)",
+        true,
+        false,
+        None::<&str>,
+    )?;
+    let fish_item = CheckMenuItem::with_id(
+        app,
+        "mode_fish",
+        "🎣 낚시대 놀이",
         true,
         false,
         None::<&str>,
@@ -49,6 +59,7 @@ pub fn build(app: &App) -> tauri::Result<()> {
         &[
             &roam_item,
             &grab_item,
+            &fish_item,
             &sep1,
             &toggle,
             &reset,
@@ -71,6 +82,11 @@ pub fn build(app: &App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "mode_roam" => crate::apply_mode(app, false),
             "mode_grab" => crate::apply_mode(app, true),
+            "mode_fish" => {
+                // Toggle: a second click on the fishing item leaves play.
+                let fishing = app.state::<crate::AppState>().is_fishing();
+                crate::apply_fishing(app, !fishing);
+            }
             "toggle_cat" => {
                 if let Some(w) = app.get_webview_window("cat") {
                     if w.is_visible().unwrap_or(true) {
@@ -100,6 +116,7 @@ pub fn build(app: &App) -> tauri::Result<()> {
     app.manage(TrayHandles {
         roam_item,
         grab_item,
+        fish_item,
         tray,
     });
 
@@ -107,22 +124,24 @@ pub fn build(app: &App) -> tauri::Result<()> {
 }
 
 /// Reflect the active mode in the tray: check the right radio item and update
-/// the icon tooltip + title suffix. macOS template icons can't easily be
-/// recolored, so the title suffix is our state indicator.
-pub fn update_mode(app: &AppHandle, grab: bool) {
+/// the icon tooltip + title suffix. `mode` is `"roam"` / `"grab"` / `"fishing"`.
+/// macOS template icons can't easily be recolored, so the title suffix is our
+/// state indicator.
+pub fn update_mode_str(app: &AppHandle, mode: &str) {
     let Some(h) = app.try_state::<TrayHandles>() else {
         return;
     };
-    let _ = h.roam_item.set_checked(!grab);
-    let _ = h.grab_item.set_checked(grab);
+    let _ = h.roam_item.set_checked(mode == "roam");
+    let _ = h.grab_item.set_checked(mode == "grab");
+    let _ = h.fish_item.set_checked(mode == "fishing");
     // Always set a concrete, non-empty title: on macOS `set_title(None)` doesn't
-    // reliably clear a previously-set title, which left the "✋" suffix stuck
-    // after switching back to Roam. A per-mode glyph is also a clearer indicator.
-    if grab {
-        let _ = h.tray.set_tooltip(Some("clawd — 🖐️ 잡기 (Grab)"));
-        let _ = h.tray.set_title(Some("✋"));
-    } else {
-        let _ = h.tray.set_tooltip(Some("clawd — 🐾 놀기 (Roam)"));
-        let _ = h.tray.set_title(Some("🐾"));
-    }
+    // reliably clear a previously-set title, which left an old suffix stuck. A
+    // per-mode glyph is also a clearer indicator.
+    let (tip, title) = match mode {
+        "grab" => ("clawd — 🖐️ 잡기 (Grab)", "✋"),
+        "fishing" => ("clawd — 🎣 낚시대 놀이", "🎣"),
+        _ => ("clawd — 🐾 놀기 (Roam)", "🐾"),
+    };
+    let _ = h.tray.set_tooltip(Some(tip));
+    let _ = h.tray.set_title(Some(title));
 }
