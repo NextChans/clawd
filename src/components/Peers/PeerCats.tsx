@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Cat } from '../Cat/Cat';
+import { cushionUrl } from '../Furniture/Furniture';
 import { ACTIVITY_BADGE, Peer } from '../../types';
 import './peers.css';
 
@@ -21,16 +22,17 @@ interface Pt {
 }
 
 /**
- * Visiting cats from clawd peers on the LAN. Each roams the whole overlay on
- * its own — a view-local 2D wander, no positions sent over the wire — so a
- * visitor feels as alive as your own cat. Shows the peer's coat + mood pose, a
- * nickname, and a coarse activity badge. Newly arrived cats wave hello;
+ * Visiting cats from clawd peers (LAN or a remote room). Each roams the whole
+ * overlay on its own — a view-local 2D wander, no positions sent over the wire
+ * — so a visitor feels as alive as your own cat. Shows the peer's coat + mood
+ * pose, a nickname, and a coarse activity badge. Newly arrived cats wave hello;
  * departures fade out.
  *
- * When both your cat and a visitor are in a playful mood, the visitor drifts
- * over to your cat, faces it, and a ❤️ pops. `getSelf` reports your cat's
- * current position; `selfPlayful` whether it's relaxed enough to play. Both
- * optional (only App passes them).
+ * A sleeping visitor stays put on a cushion (it doesn't sleep-walk). When both
+ * your cat and a visitor are in a playful mood, the visitor drifts over to your
+ * cat, faces it, and a ❤️ pops. `getSelf` reports your cat's current position;
+ * `selfPlayful` whether it's relaxed enough to play. Both optional (only App
+ * passes them).
  */
 export function PeerCats({
   peers,
@@ -105,6 +107,7 @@ function PeerCat({
 }) {
   const moveRef = useRef<HTMLDivElement>(null);
   const posRef = useRef<Pt>({ x: 0, y: 0 });
+  const placed = useRef(false);
   const [gait, setGait] = useState<'idle' | 'walk'>('idle');
   const [flip, setFlip] = useState(false); // true = facing left
   const [playing, setPlaying] = useState(false);
@@ -116,19 +119,46 @@ function PeerCat({
   const selfPlayfulRef = useRef(selfPlayful);
   selfPlayfulRef.current = selfPlayful;
 
+  const asleep = peer.state === 'sleeping';
+
   useEffect(() => {
     let alive = true;
     let walkTimer = 0;
     let restTimer = 0;
     let playTimer = 0;
 
-    // Spread starting spots out a bit by index.
-    const start = { x: 40 + (index % 5) * 120, y: 60 + (index % 3) * 90 };
-    posRef.current = start;
-    const el = moveRef.current;
-    if (el) {
-      el.style.transition = 'none';
-      el.style.transform = `translate3d(${start.x}px, ${start.y}px, 0)`;
+    // Place once, on first mount — never on a later mood change, so a waking or
+    // dozing cat doesn't teleport back to its start spot.
+    const node = moveRef.current;
+    if (node && !placed.current) {
+      const start = { x: 40 + (index % 5) * 120, y: 60 + (index % 3) * 90 };
+      posRef.current = start;
+      node.style.transition = 'none';
+      node.style.transform = `translate3d(${start.x}px, ${start.y}px, 0)`;
+      placed.current = true;
+    }
+
+    // A sleeping visitor retreats to the bottom edge (out of the way of your
+    // work) and curls up there — one move, then it stays put (no sleep-walking).
+    if (asleep) {
+      const el = moveRef.current;
+      const maxX = Math.max(MARGIN, window.innerWidth - PEER_SIZE - MARGIN);
+      const maxY = Math.max(MARGIN, window.innerHeight - PEER_SIZE - MARGIN);
+      const cur = posRef.current;
+      if (el && cur.y < maxY - 40) {
+        const target = { x: Math.min(maxX, Math.max(MARGIN, cur.x)), y: maxY };
+        const dur = Math.max(900, Math.hypot(target.x - cur.x, target.y - cur.y) * 6);
+        setFlip(target.x < cur.x);
+        setGait('walk');
+        void el.offsetWidth;
+        el.style.transition = `transform ${dur}ms ease-in-out`;
+        el.style.transform = `translate3d(${target.x}px, ${target.y}px, 0)`;
+        posRef.current = target;
+        const t = window.setTimeout(() => setGait('idle'), dur);
+        return () => clearTimeout(t);
+      }
+      setGait('idle');
+      return () => {};
     }
 
     const bounds = () => ({
@@ -146,8 +176,6 @@ function PeerCat({
           return [1000, 2400];
         case 'busy':
           return [2000, 4000];
-        case 'idle':
-          return [7000, 13000];
         default:
           return [3000, 7000];
       }
@@ -155,8 +183,8 @@ function PeerCat({
 
     const wander = () => {
       if (!alive) return;
-      const node = moveRef.current;
-      if (!node) return;
+      const el = moveRef.current;
+      if (!el) return;
       const { maxX, maxY } = bounds();
 
       // When both are relaxed, half the time drift over to your cat to play.
@@ -174,9 +202,9 @@ function PeerCat({
       const dur = Math.max(900, dist * 6);
       setFlip(target.x < cur.x);
       setGait('walk');
-      void node.offsetWidth;
-      node.style.transition = `transform ${dur}ms ease-in-out`;
-      node.style.transform = `translate3d(${target.x}px, ${target.y}px, 0)`;
+      void el.offsetWidth;
+      el.style.transition = `transform ${dur}ms ease-in-out`;
+      el.style.transform = `translate3d(${target.x}px, ${target.y}px, 0)`;
       posRef.current = target;
 
       walkTimer = window.setTimeout(() => {
@@ -205,9 +233,10 @@ function PeerCat({
       clearTimeout(playTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, peer.activity]);
+  }, [index, peer.activity, asleep]);
 
   const badge = ACTIVITY_BADGE[peer.activity] ?? ACTIVITY_BADGE.light;
+  const cushion = asleep ? cushionUrl(peer.color) : undefined;
   return (
     <div className="peer-move" ref={moveRef}>
       <AnimatePresence>
@@ -240,6 +269,8 @@ function PeerCat({
         <span className="peer-badge">{badge.icon}</span>
         <span className="peer-name">{peer.nickname}</span>
       </div>
+      {/* Cushion under a sleeping visitor (behind the cat). */}
+      {cushion && <img className="peer-cushion" src={cushion} alt="" draggable={false} />}
       <div className={flip ? 'peer-flip flip' : 'peer-flip'}>
         <div className="peer-sprite">
           <Cat state={peer.state} gait={gait} color={peer.color} />

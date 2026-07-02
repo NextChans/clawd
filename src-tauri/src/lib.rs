@@ -592,6 +592,9 @@ pub fn run() {
             presence::presence_publish,
             presence::presence_stop,
             presence::presence_peers,
+            presence::presence_remote_open,
+            presence::presence_remote_join,
+            presence::presence_remote_leave,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
