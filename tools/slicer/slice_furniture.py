@@ -76,6 +76,9 @@ TARGETS = [
     ("gray_tabby", "tower", ROW_C, "L", COL1),
     ("gray_tabby", "cushion", ROW_C, "L", COL3),
     ("gray_tabby", "bowl", ROW_D, "L", COL3),
+    # 밥그릇 상단행(B1~B3)은 크림/베이지 톤 — 나무 스탠드 2구 B3 double 을
+    # cream 전용 밥그릇으로도 추출한다. gray_tabby/bowl 과 동일 ROI(같은 그림).
+    ("cream", "bowl", ROW_D, "L", COL3),
     ("white", "tower", ROW_C, "R", COL1),
     ("white", "cushion", ROW_C, "R", COL3),
 ]

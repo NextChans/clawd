@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Cat } from './components/Cat/Cat';
+import { Cat, hasCatSprite } from './components/Cat/Cat';
 import { FurnitureBaseline, FurnitureKind } from './components/Furniture/Furniture';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
@@ -93,12 +93,17 @@ export default function App() {
   // Butterfly the cat is chasing, and a transient pounce on the catch.
   const [butterfly, setButterfly] = useState<Butterfly | null>(null);
   const [pounce, setPounce] = useState(false);
+  // Brief "spooked" beat when a butterfly first appears (drives the startled pose).
+  const [startled, setStartled] = useState(false);
   // Grab-mode petting: mouse held down on the cat → purr.
   const [holding, setHolding] = useState(false);
   // Greeting wiggle + bubble shown for the first few seconds each launch.
   const [greeting, setGreeting] = useState(true);
-  // Feed reaction: sparkle at the bowl + a temporary content pose.
+  // Feed reaction: sparkle at the bowl + a temporary content pose. `feedPhase`
+  // sequences the expressive pose: tuck in and `eating`, then a short `purr`
+  // afterglow before returning to normal.
   const [fed, setFed] = useState(false);
+  const [feedPhase, setFeedPhase] = useState<'eating' | 'purr' | null>(null);
 
   const grab = mode === 'grab';
 
@@ -253,16 +258,25 @@ export default function App() {
     };
   }, []);
 
-  // Feed reaction: sparkle the bowl + hold a content pose for a few seconds.
+  // Feed reaction: sparkle the bowl + sequence eating → purr for a few seconds.
   useEffect(() => {
-    let clear: number | null = null;
+    const timers: number[] = [];
     const un = listen('feed-cat', () => {
-      if (clear !== null) clearTimeout(clear);
+      timers.forEach(clearTimeout);
+      timers.length = 0;
       setFed(true);
-      clear = window.setTimeout(() => setFed(false), FEED_REACT_MS);
+      setFeedPhase('eating');
+      // Perk up into a content purr for the tail end of the reaction window.
+      timers.push(window.setTimeout(() => setFeedPhase('purr'), FEED_REACT_MS - 1500));
+      timers.push(
+        window.setTimeout(() => {
+          setFed(false);
+          setFeedPhase(null);
+        }, FEED_REACT_MS),
+      );
     });
     return () => {
-      if (clear !== null) clearTimeout(clear);
+      timers.forEach(clearTimeout);
       un.then((off) => off());
     };
   }, []);
@@ -271,8 +285,13 @@ export default function App() {
   // target over `duration_ms`, then fade it out and pop a pounce on the cat.
   useEffect(() => {
     if (!butterfly) return;
+    // A quick spooked beat as the butterfly pops in, before the chase begins.
+    setStartled(true);
+    const unspook = window.setTimeout(() => setStartled(false), 550);
     const el = flyRef.current;
-    if (!el) return;
+    if (!el) {
+      return () => clearTimeout(unspook);
+    }
     el.style.transition = 'none';
     el.style.opacity = '1';
     el.style.transform = `translate3d(${butterfly.x}px, ${butterfly.y}px, 0)`;
@@ -287,6 +306,7 @@ export default function App() {
     }, butterfly.duration_ms);
     const gone = window.setTimeout(() => setButterfly(null), butterfly.duration_ms + 400);
     return () => {
+      clearTimeout(unspook);
       clearTimeout(caught);
       clearTimeout(gone);
     };
@@ -366,6 +386,24 @@ export default function App() {
   const effectiveState: CatState =
     greeting || (fed && state === 'exhausted') ? 'playing' : state;
 
+  // Expressive pose override — the new art (cream only). Priority, highest
+  // first: petting/holding in grab → purr; then Roam flourishes. Each maps to a
+  // dedicated sprite; `usePose` gates on the sprite actually existing so other
+  // colors fall back to the legacy CSS flourish below instead of breaking.
+  let overridePose: string | undefined;
+  if (grab) {
+    if (hover || holding) overridePose = 'happy_purr';
+  } else if (pounce) {
+    overridePose = 'playing_pounce';
+  } else if (startled) {
+    overridePose = 'startled';
+  } else if (feedPhase) {
+    overridePose = feedPhase === 'purr' ? 'happy_purr' : 'eating';
+  } else if (subEvent && gait === 'idle') {
+    overridePose = subEvent; // 'yawn' | 'stretch'
+  }
+  const usePose = !!overridePose && hasCatSprite(config.catColor, overridePose);
+
   // On-demand furniture: a prop appears only while its mood is active (keyed on
   // the *raw* mood so it lines up with `roam.rs`'s wander target), plus the bowl
   // during a feed reaction. Idle moods (playing/curious/active) show nothing.
@@ -375,13 +413,20 @@ export default function App() {
   if (state === 'exhausted' || fed) visibleFurniture.add('bowl');
 
   // FX layer classes — a flourish/interaction stack on the `.cat-fx` wrapper.
+  // When an expressive pose is in play (`usePose`) the pose *is* the flourish,
+  // so we skip the CSS squish transforms it replaces (pounce/pet/purr/yawn/
+  // stretch) to avoid double-animating. If the pose sprite is missing (non-cream
+  // colors) the CSS classes below still fire as the fallback. The greeting
+  // wiggle is independent (it never sets an override) so it always applies.
   const fx = ['cat-fx'];
   if (greeting) fx.push('wiggle');
-  if (pounce) fx.push('pounce');
-  if (grab && hover) fx.push('pet');
-  if (grab && holding) fx.push('purr');
-  // Yawn/stretch only while resting in Roam (grab / motion would look wrong).
-  if (subEvent && !grab && gait === 'idle') fx.push(subEvent);
+  if (!usePose) {
+    if (pounce) fx.push('pounce');
+    if (grab && hover) fx.push('pet');
+    if (grab && holding) fx.push('purr');
+    // Yawn/stretch only while resting in Roam (grab / motion would look wrong).
+    if (subEvent && !grab && gait === 'idle') fx.push(subEvent);
+  }
 
   // Shadow reacts to the gait (blurs + shrinks while airborne).
   const containerClass = [
@@ -525,7 +570,12 @@ export default function App() {
             with the flip or the resting breathing. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
           <div className={fx.join(' ')}>
-            <Cat state={effectiveState} gait={gait} color={config.catColor} />
+            <Cat
+              state={effectiveState}
+              gait={gait}
+              color={config.catColor}
+              pose={usePose ? overridePose : undefined}
+            />
           </div>
         </div>
       </div>

@@ -12,6 +12,29 @@
     "exhausted_lie"
   ],
   "extras": ["run_stretch_alt"],
+  "expressive": {
+    "note": "Optional pose overrides driven by App.tsx (idle blink, flourishes, feed/pet reactions). Authored for cream only; other colors fall back to CSS flourishes / their state pose.",
+    "poses": [
+      "sit_forward_blink",
+      "yawn",
+      "stretch",
+      "eating",
+      "happy_purr",
+      "startled",
+      "playing_pounce"
+    ],
+    "available": {
+      "cream": [
+        "sit_forward_blink",
+        "yawn",
+        "stretch",
+        "eating",
+        "happy_purr",
+        "startled",
+        "playing_pounce"
+      ]
+    }
+  },
   "available": {
     "cream": [
       "sit_forward",
@@ -71,14 +94,14 @@
   },
   "furniture": {
     "kinds": ["tower", "cushion", "bowl"],
-    "note": "tower=T2 Platform, cushion=C3 Cave, bowl=B3 Double. bowl authored only for gray_tabby; other colors fall back to gray_tabby/bowl.png in code. cream has no furniture sheet (props omitted).",
+    "note": "tower=T2 Platform, cushion=C3 Cave, bowl=B3 Double. bowl authored for gray_tabby and cream (the cream-toned B3 double); other colors fall back to gray_tabby/bowl.png in code. cream still has no tower/cushion sheet (those props omitted).",
     "path": "src/assets/furniture/<color>/<kind>.png",
     "available": {
       "black": ["tower", "cushion"],
       "orange_tabby": ["tower", "cushion"],
       "gray_tabby": ["tower", "cushion", "bowl"],
       "white": ["tower", "cushion"],
-      "cream": []
+      "cream": ["bowl"]
     }
   }
 }

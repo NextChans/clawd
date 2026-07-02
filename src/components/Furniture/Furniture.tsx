@@ -24,10 +24,11 @@ const FURNITURE = import.meta.glob('../../assets/furniture/*/*.png', {
 
 /**
  * Resolve a furniture image URL for a color, with graceful fallbacks:
- *  - Food bowls were only authored for `gray_tabby`, so every other color falls
- *    back to the gray bowl (physical file reused, not duplicated on disk).
- *  - `cream` has no furniture sheet yet → returns undefined → the prop renders
- *    nothing (the whole baseline simply omits it).
+ *  - Bowls are authored for `gray_tabby` and `cream` (both the cream-toned B3
+ *    double); every *other* color falls back to the gray bowl (file reused, not
+ *    duplicated on disk).
+ *  - `cream` still has no tower/cushion sheet → those return undefined → the
+ *    prop renders nothing (that slot on the baseline is simply omitted).
  */
 function furnitureUrl(color: CatColor, kind: FurnitureKind): string | undefined {
   const direct = FURNITURE[`../../assets/furniture/${color}/${kind}.png`];

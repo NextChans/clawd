@@ -43,7 +43,7 @@ import os
 import numpy as np
 from PIL import Image
 
-# 시트 그리드 (각 시트/quadrant: 4열 x 3행)
+# 시트 그리드 (각 시트/quadrant: 4열 x 3행) — --layout 으로 교체 가능.
 COLS = 4
 ROWS = 3
 
@@ -93,6 +93,50 @@ CANONICAL_POSES = [
     "run_right_a", "run_right_b", "sleep_curled",
     "alert_arched", "angry_hiss", "exhausted_lie",
 ]
+
+# --- 레이아웃 프리셋 ---------------------------------------------------------
+# 시트마다 그리드/셀 매핑이 다르다. --layout 으로 골라 위 전역(COLS/ROWS/CELLS/
+# EXTRAS)을 교체한다. 나머지 파이프라인(flood/blob/normalize)은 그대로 재사용.
+#
+#   default   : 원본 pose 시트 (4x3), run_stretch_alt extra 포함.
+#   new_poses : 표정/동작 확장 시트 (4x2, 마지막 셀 빈칸). 라벨은 하단 baked-in.
+#     Row0: sit_forward_blink | yawn | stretch | eating
+#     Row1: happy_purr        | startled | playing_pounce | (empty)
+LAYOUTS: dict[str, dict] = {
+    "default": {
+        "cols": 4,
+        "rows": 3,
+        "cells": dict(CELLS),
+        "extras": set(EXTRAS),
+    },
+    "new_poses": {
+        "cols": 4,
+        "rows": 2,
+        "cells": {
+            (0, 0): "sit_forward_blink",
+            (0, 1): "yawn",
+            (0, 2): "stretch",
+            (0, 3): "eating",
+            (1, 0): "happy_purr",
+            (1, 1): "startled",
+            (1, 2): "playing_pounce",
+            (1, 3): None,  # empty (label + placeholder box)
+        },
+        "extras": set(),
+    },
+}
+
+
+def apply_layout(name: str) -> None:
+    """--layout 프리셋을 전역(COLS/ROWS/CELLS/EXTRAS)에 반영."""
+    global COLS, ROWS, CELLS, EXTRAS
+    if name not in LAYOUTS:
+        raise ValueError(f"unknown layout: {name} (choices: {', '.join(LAYOUTS)})")
+    spec = LAYOUTS[name]
+    COLS = spec["cols"]
+    ROWS = spec["rows"]
+    CELLS = spec["cells"]
+    EXTRAS = spec["extras"]
 
 
 def background_candidate(rgb: np.ndarray) -> np.ndarray:
@@ -256,22 +300,38 @@ def slice_array(arr: np.ndarray, output_dir: str, bg_mode: str,
     big = [(cid, size, cy, cx) for (cid, size, cy, cx) in comps if size >= MIN_SIZE]
     print(f"  detected {len(big)} character blob(s) (>= {MIN_SIZE}px) [{bg_mode}]")
 
+    # Assign each blob to its nearest *named* cell center, then keep — per
+    # center — the blob whose centroid sits closest to it. This is robust to
+    # both failure modes we see in the wild:
+    #   - Cats overflow into an *adjacent empty* column (default sheet:
+    #     run_right_b / angry_hiss), so we must not bin by strict integer cell.
+    #   - An empty cell can carry a large spurious blob (new_poses sheet: a dark
+    #     gradient in cell (1,3) ~446k px). It maps to its nearest center too,
+    #     but a real, well-centered cat owns that center by distance and wins —
+    #     so the spurious blob is dropped instead of stealing the slot and
+    #     cascading a misassignment (the greedy largest-first variant did steal).
     centers = expected_centers(cw, ch)
-    assigned: dict[str, int] = {}
+    best_per_name: dict[str, tuple[float, int, int]] = {}  # name -> (dist2, size, cid)
     for cid, size, cy, cx in big:
         best_name = None
         best_d = None
         for name, (ey, ex) in centers.items():
-            if name in assigned:
-                continue
             d = (cy - ey) ** 2 + (cx - ex) ** 2
             if best_d is None or d < best_d:
                 best_d = d
                 best_name = name
         if best_name is None:
-            print(f"  [warn] blob id={cid} size={size} unmatched (all names taken)")
             continue
-        assigned[best_name] = cid
+        prev = best_per_name.get(best_name)
+        if prev is None or best_d < prev[0]:
+            if prev is not None:
+                print(f"  [drop] blob id={prev[2]} size={prev[1]} "
+                      f"(farther from {best_name} center) superseded")
+            best_per_name[best_name] = (best_d, size, cid)
+        else:
+            print(f"  [drop] blob id={cid} size={size} "
+                  f"(farther from {best_name} center) — likely label/bg noise")
+    assigned: dict[str, int] = {n: cid for n, (_, _, cid) in best_per_name.items()}
 
     missing = [n for n in centers if n not in assigned]
     if missing:
@@ -338,9 +398,13 @@ def main():
                     help="treat input as 2x2 quadrant multi-color sheet")
     ap.add_argument("--bg-mode", choices=["color", "flood"], default="flood",
                     help="background detection mode (default: flood)")
+    ap.add_argument("--layout", choices=list(LAYOUTS), default="default",
+                    help="grid/cell preset (default: default; new_poses = 4x2 expression sheet)")
     ap.add_argument("--no-extras", action="store_true",
                     help="skip extra poses (run_stretch_alt) in single-color mode")
     args = ap.parse_args()
+
+    apply_layout(args.layout)
 
     if args.multi_color:
         if not args.output_root:

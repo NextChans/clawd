@@ -26,18 +26,63 @@ export function Cat({
   state,
   gait = 'idle',
   color = 'cream',
+  pose,
 }: {
   state: CatState;
   gait?: Gait;
   color?: CatColor;
+  /**
+   * Expressive **pose override** (e.g. `yawn`, `eating`, `happy_purr`,
+   * `startled`, `playing_pounce`). When set *and* the sprite exists for this
+   * color, it wins over the state/gait pose and renders as a single still —
+   * this is how App.tsx swaps in the new expression art. Only `cream` ships
+   * these poses today; for any other color the override is ignored and the cat
+   * keeps its normal state/gait pose (App re-applies the legacy CSS flourish as
+   * the fallback — see App.tsx). A missing/unknown pose is likewise ignored.
+   */
+  pose?: string;
 }) {
-  const poses = posesFor(state, gait);
+  // Resolve the override only if its sprite actually exists for this color;
+  // otherwise fall through to the state/gait pose so non-cream cats never break.
+  const override = pose && spriteUrl(color, pose) ? pose : undefined;
+  const poses = override ?? posesFor(state, gait);
   const frames = Array.isArray(poses) ? poses : [poses];
   const urls = frames.map((p) => spriteUrl(color, p));
   const twoFrame = urls.length === 2;
 
   // Which of the two frames is currently shown. Only meaningful when twoFrame.
   const [frameIdx, setFrameIdx] = useState(0);
+
+  // Idle blink: while sitting still (no override, single forward-sit still), flip
+  // to the closed-eyes `sit_forward_blink` for a beat at a random cadence so the
+  // resting cat feels alive. Only fires when the blink sprite exists (cream).
+  const restingSit = !override && !twoFrame && poses === 'sit_forward';
+  const blinkUrl = restingSit ? spriteUrl(color, 'sit_forward_blink') : undefined;
+  const canBlink = gait === 'idle' && !!blinkUrl;
+  const [blinking, setBlinking] = useState(false);
+  useEffect(() => {
+    if (!canBlink) {
+      setBlinking(false);
+      return;
+    }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    let blinkOff: number | undefined;
+    let nextId: number | undefined;
+    const schedule = () => {
+      // Random 6–15s between blinks; each blink holds ~150ms.
+      nextId = window.setTimeout(() => {
+        setBlinking(true);
+        blinkOff = window.setTimeout(() => setBlinking(false), 150);
+        schedule();
+      }, 6000 + Math.random() * 9000);
+    };
+    schedule();
+    return () => {
+      if (nextId) clearTimeout(nextId);
+      if (blinkOff) clearTimeout(blinkOff);
+      setBlinking(false);
+    };
+  }, [canBlink]);
 
   // Drive the flip with a timer that renders one frame at a time. Reset to
   // frame 0 and (re)arm whenever the animation identity changes so switching
@@ -67,7 +112,7 @@ export function Cat({
     return <CatSvg state={state} gait={gait} color={color} />;
   }
 
-  const src = twoFrame ? urls[frameIdx] : urls[0];
+  const src = blinking && blinkUrl ? blinkUrl : twoFrame ? urls[frameIdx] : urls[0];
   // Only resting poses breathe / tilt; while walking or running the frame-swap
   // is the motion and CSS breathing would fight it.
   const cls = gait === 'idle' ? 'cat-img resting' : 'cat-img';
@@ -113,4 +158,13 @@ const SPRITES = import.meta.glob('../../assets/cat/*/*.png', {
 
 function spriteUrl(color: CatColor, pose: string): string | undefined {
   return SPRITES[`../../assets/cat/${color}/${pose}.png`];
+}
+
+/**
+ * Whether a sprite exists on disk for this color+pose. Exported so App.tsx can
+ * decide, from the single source of truth (the sprite glob), whether to swap in
+ * an expressive pose or keep the legacy CSS flourish as the fallback.
+ */
+export function hasCatSprite(color: CatColor, pose: string): boolean {
+  return !!spriteUrl(color, pose);
 }
