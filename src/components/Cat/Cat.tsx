@@ -68,8 +68,11 @@ export function Cat({
   }
 
   const src = twoFrame ? urls[frameIdx] : urls[0];
+  // Only resting poses breathe / tilt; while walking or running the frame-swap
+  // is the motion and CSS breathing would fight it.
+  const cls = gait === 'idle' ? 'cat-img resting' : 'cat-img';
   return (
-    <div className="cat-img" role="img" aria-label={`cat: ${state}`}>
+    <div className={cls} role="img" aria-label={`cat: ${state}`}>
       <img className="frame" src={src} alt="" draggable={false} />
     </div>
   );

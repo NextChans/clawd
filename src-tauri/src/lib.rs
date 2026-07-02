@@ -11,7 +11,7 @@ mod usage;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
@@ -51,6 +51,11 @@ pub(crate) const WANDER_MARGIN: f64 = 40.0;
 const GRAB_W: f64 = 300.0;
 const GRAB_H: f64 = 280.0;
 
+/// Feeding: how long the cat lingers at the bowl (Roam pauses hops for this
+/// long so it stays put), and the spam-guard cooldown between feeds.
+const FEED_HOLD: Duration = Duration::from_secs(4);
+const FEED_COOLDOWN: Duration = Duration::from_secs(60);
+
 /// A wander instruction the frontend tweens to via a CSS transition. `x`/`y`
 /// are the target top-left of the cat container in window logical px.
 #[derive(Clone, serde::Serialize)]
@@ -70,6 +75,27 @@ struct PlaceEvent {
     y: f64,
 }
 
+/// A short "alive" flourish the frontend plays in place (yawn / stretch) while
+/// the cat is resting. Scheduled by the wander loop; see `roam.rs`.
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct SubEvent {
+    /// `"yawn"` or `"stretch"`.
+    pub kind: String,
+    pub duration_ms: u64,
+}
+
+/// A butterfly the cat chases. `x`/`y` is where it appears; it flutters to
+/// `target_x`/`target_y` over `duration_ms` (the cat is sent chasing via a
+/// parallel `cat-wander`). All coords are the cat window's logical px.
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct ButterflyEvent {
+    pub x: f64,
+    pub y: f64,
+    pub target_x: f64,
+    pub target_y: f64,
+    pub duration_ms: u64,
+}
+
 pub struct AppState {
     /// `false` = **Roam** (click-through, auto-wander), `true` = **Grab** (the
     /// cat captures the mouse for drag/click and holds still).
@@ -87,6 +113,9 @@ pub struct AppState {
     /// The cat's current logical top-left position within the window (CSS px).
     /// `None` until first placed. Shared with the wander loop (`roam.rs`).
     cat_pos: Mutex<Option<(f64, f64)>>,
+    /// When the cat was last fed. Drives the feed cooldown and the brief
+    /// Roam-mode "linger at the bowl" hold (`roam.rs`).
+    last_feed: Mutex<Option<Instant>>,
 }
 
 impl Default for AppState {
@@ -100,6 +129,7 @@ impl Default for AppState {
             notified_80: AtomicBool::new(false),
             notified_100: AtomicBool::new(false),
             cat_pos: Mutex::new(None),
+            last_feed: Mutex::new(None),
         }
     }
 }
@@ -122,6 +152,15 @@ impl AppState {
 
     pub(crate) fn set_cat_pos(&self, x: f64, y: f64) {
         *self.cat_pos.lock().unwrap() = Some((x, y));
+    }
+
+    /// When the cat was last fed, if ever.
+    pub(crate) fn last_feed(&self) -> Option<Instant> {
+        *self.last_feed.lock().unwrap()
+    }
+
+    fn set_last_feed(&self) {
+        *self.last_feed.lock().unwrap() = Some(Instant::now());
     }
 }
 
@@ -190,6 +229,52 @@ fn hide_details(app: AppHandle) {
     if let Some(w) = app.get_webview_window("details") {
         let _ = w.hide();
     }
+}
+
+/// Feed the cat (from the details window). Rate-limited to once per
+/// [`FEED_COOLDOWN`]; returns `false` (a no-op) while cooling down so the UI can
+/// keep its button disabled. On success we send the cat trotting to the food
+/// bowl (Roam only) and broadcast `feed-cat` so the frontend can sparkle the
+/// bowl and show the "just ate" reaction.
+#[tauri::command]
+fn feed_cat(app: AppHandle, state: tauri::State<'_, AppState>) -> bool {
+    if let Some(t) = state.last_feed() {
+        if t.elapsed() < FEED_COOLDOWN {
+            return false;
+        }
+    }
+    state.set_last_feed();
+
+    // In Roam, walk the cat over to the bowl (right prop, 0.80 of the width).
+    // The wander loop then holds it there for `FEED_HOLD` (see `roam.rs`).
+    if state.is_roam() {
+        if let Some(win) = app.get_webview_window("cat") {
+            if let Some(wa) = workarea(&win) {
+                let (w, h) = wa.logical_size();
+                let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+                let bx = (0.80 * w - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
+                let by = (h - CAT_SIZE - 6.0).clamp(WANDER_MARGIN, (h - CAT_SIZE).max(WANDER_MARGIN));
+                let (px, py) = state.cat_pos().unwrap_or((bx, by));
+                let dist = ((bx - px).powi(2) + (by - py).powi(2)).sqrt();
+                let dur = ((dist / 190.0) * 1000.0).clamp(500.0, 3000.0) as u64;
+                let direction = if bx < px { "left" } else { "right" };
+                let _ = app.emit(
+                    "cat-wander",
+                    WanderEvent {
+                        x: bx,
+                        y: by,
+                        duration_ms: dur,
+                        direction: direction.to_string(),
+                        gait: "walk".to_string(),
+                    },
+                );
+                state.set_cat_pos(bx, by);
+            }
+        }
+    }
+
+    let _ = app.emit("feed-cat", ());
+    true
 }
 
 /// Move the cat back to the top-right corner. Forces Roam first so the overlay
@@ -505,6 +590,7 @@ pub fn run() {
             reset_position,
             get_cat_pos,
             enter_grab,
+            feed_cat,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

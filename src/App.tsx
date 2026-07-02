@@ -7,12 +7,14 @@ import { FurnitureBaseline } from './components/Furniture/Furniture';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
+import { CatState } from './types';
 import { formatCost, formatRate, formatTokens } from './utils/format';
 import './App.css';
 
 type Mode = 'roam' | 'grab';
 type Gait = 'idle' | 'walk' | 'run' | 'jitter';
 type Direction = 'left' | 'right';
+type SubEventKind = 'yawn' | 'stretch';
 
 /** Rust's `cat-wander` payload: tween the cat here over `duration_ms`. */
 interface WanderEvent {
@@ -27,6 +29,27 @@ interface PlaceEvent {
   x: number;
   y: number;
 }
+/** Rust's `cat-sub-event` payload: a brief in-place flourish while resting. */
+interface SubEvent {
+  kind: SubEventKind;
+  duration_ms: number;
+}
+/** Rust's `cat-butterfly` payload: spawn a butterfly the cat chases. */
+interface ButterflyEvent {
+  x: number;
+  y: number;
+  target_x: number;
+  target_y: number;
+  duration_ms: number;
+}
+/** Live butterfly being animated on screen (frontend-only). */
+interface Butterfly extends ButterflyEvent {
+  /** Bump on each spawn so the animation effect re-fires. */
+  id: number;
+}
+
+/** How long the "just ate" reaction (temp sit + bowl linger) lasts. */
+const FEED_REACT_MS = 5000;
 
 const FIRST_RUN_KEY = 'first_run_done';
 /** Tooltip max width (px); must match `.tooltip { max-width }` in App.css. */
@@ -64,10 +87,24 @@ export default function App() {
   // First-launch hint (bigger, self-dismissing).
   const [hint, setHint] = useState(false);
 
+  // --- "Alive" flourishes + interactions ---
+  // Yawn / stretch class currently applied (cleared after its duration).
+  const [subEvent, setSubEvent] = useState<SubEventKind | null>(null);
+  // Butterfly the cat is chasing, and a transient pounce on the catch.
+  const [butterfly, setButterfly] = useState<Butterfly | null>(null);
+  const [pounce, setPounce] = useState(false);
+  // Grab-mode petting: mouse held down on the cat → purr.
+  const [holding, setHolding] = useState(false);
+  // Greeting wiggle + bubble shown for the first few seconds each launch.
+  const [greeting, setGreeting] = useState(true);
+  // Feed reaction: sparkle at the bowl + a temporary content pose.
+  const [fed, setFed] = useState(false);
+
   const grab = mode === 'grab';
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gaitTimer = useRef<number | null>(null);
+  const flyRef = useRef<HTMLDivElement>(null);
 
   // --- Movement primitives (imperative so React re-renders never clobber an
   // in-flight CSS transition; `transform` is never part of the JSX style). ---
@@ -180,6 +217,101 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Greeting: wiggle + a "hi!" bubble for the first 4s of every launch (we
+  // deliberately don't persist this — the cat is always glad to see you).
+  useEffect(() => {
+    const t = setTimeout(() => setGreeting(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Yawn / stretch flourishes scheduled by Rust. Apply the class for its
+  // duration, then clear. A fresh event supersedes any in-flight one.
+  useEffect(() => {
+    let clear: number | null = null;
+    const un = listen<SubEvent>('cat-sub-event', (e) => {
+      if (clear !== null) clearTimeout(clear);
+      setSubEvent(e.payload.kind);
+      clear = window.setTimeout(() => setSubEvent(null), e.payload.duration_ms);
+    });
+    return () => {
+      if (clear !== null) clearTimeout(clear);
+      un.then((off) => off());
+    };
+  }, []);
+
+  // Butterfly chase: Rust sends where the butterfly appears + where it flutters
+  // (the cat is sent chasing via a parallel `cat-wander`). We just record it;
+  // the animation lives in the effect below.
+  useEffect(() => {
+    let seq = 0;
+    const un = listen<ButterflyEvent>('cat-butterfly', (e) => {
+      seq += 1;
+      setButterfly({ ...e.payload, id: seq });
+    });
+    return () => {
+      un.then((off) => off());
+    };
+  }, []);
+
+  // Feed reaction: sparkle the bowl + hold a content pose for a few seconds.
+  useEffect(() => {
+    let clear: number | null = null;
+    const un = listen('feed-cat', () => {
+      if (clear !== null) clearTimeout(clear);
+      setFed(true);
+      clear = window.setTimeout(() => setFed(false), FEED_REACT_MS);
+    });
+    return () => {
+      if (clear !== null) clearTimeout(clear);
+      un.then((off) => off());
+    };
+  }, []);
+
+  // Drive the butterfly across the screen: snap to its start, flutter to the
+  // target over `duration_ms`, then fade it out and pop a pounce on the cat.
+  useEffect(() => {
+    if (!butterfly) return;
+    const el = flyRef.current;
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style.opacity = '1';
+    el.style.transform = `translate3d(${butterfly.x}px, ${butterfly.y}px, 0)`;
+    void el.offsetWidth; // commit the start before animating
+    el.style.transition = `transform ${butterfly.duration_ms}ms ease-in-out, opacity 0.35s ease`;
+    el.style.transform = `translate3d(${butterfly.target_x}px, ${butterfly.target_y}px, 0)`;
+
+    const caught = window.setTimeout(() => {
+      el.style.opacity = '0';
+      setPounce(true);
+      window.setTimeout(() => setPounce(false), 450);
+    }, butterfly.duration_ms);
+    const gone = window.setTimeout(() => setButterfly(null), butterfly.duration_ms + 400);
+    return () => {
+      clearTimeout(caught);
+      clearTimeout(gone);
+    };
+  }, [butterfly]);
+
+  // Petting: releasing the mouse anywhere ends the purr (a drag hands the
+  // pointer to the OS, so the container's own pointerup may never fire).
+  useEffect(() => {
+    const end = () => setHolding(false);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('blur', end);
+    return () => {
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('blur', end);
+    };
+  }, []);
+
+  // Grab mode owns interaction: leaving it clears any hover/hold artifacts.
+  useEffect(() => {
+    if (!grab) {
+      setHolding(false);
+      setHover(false);
+    }
+  }, [grab]);
+
   // Distinguish a click (open details) from a drag (move window).
   const down = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
@@ -187,6 +319,8 @@ export default function App() {
   const onPointerDown = (e: React.PointerEvent) => {
     down.current = { x: e.clientX, y: e.clientY };
     dragged.current = false;
+    // Holding still on the cat = petting → purr (until it turns into a drag).
+    if (grab) setHolding(true);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!down.current || dragged.current) return;
@@ -194,6 +328,7 @@ export default function App() {
     const dy = Math.abs(e.clientY - down.current.y);
     if (dx + dy > 4) {
       dragged.current = true;
+      setHolding(false); // it's a drag, not a pet
       // Hand the gesture to the OS window manager (moves the grab window).
       invoke('start_drag').catch(() => {});
     }
@@ -226,15 +361,69 @@ export default function App() {
 
   const dailyRatio = config.dailyBudget > 0 ? usage.today_cost / config.dailyBudget : 0;
 
+  // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
+  // to a content sit for the reaction window. Otherwise show the real mood.
+  const effectiveState: CatState =
+    greeting || (fed && state === 'exhausted') ? 'playing' : state;
+
+  // FX layer classes — a flourish/interaction stack on the `.cat-fx` wrapper.
+  const fx = ['cat-fx'];
+  if (greeting) fx.push('wiggle');
+  if (pounce) fx.push('pounce');
+  if (grab && hover) fx.push('pet');
+  if (grab && holding) fx.push('purr');
+  // Yawn/stretch only while resting in Roam (grab / motion would look wrong).
+  if (subEvent && !grab && gait === 'idle') fx.push(subEvent);
+
+  // Shadow reacts to the gait (blurs + shrinks while airborne).
+  const containerClass = [
+    placed ? 'cat-container placed' : 'cat-container',
+    gait === 'run' ? 'running' : gait === 'walk' ? 'walking' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div className={grab ? 'stage grab' : 'stage'}>
       {/* Decorative furniture row (Roam only — the grab window would clip it).
           Rendered before the cat so the cat always sits in front of its props. */}
       {!grab && <FurnitureBaseline color={config.catColor} />}
 
+      {/* Butterfly the cat chases (Roam only). Driven imperatively via flyRef. */}
+      {!grab && butterfly && (
+        <div ref={flyRef} className="butterfly" aria-hidden>
+          <svg viewBox="0 0 32 32" width="30" height="30">
+            <g className="bfly-wings">
+              <path
+                d="M16 16 C 9 4, 1 6, 4 15 C 1 24, 10 26, 16 16 Z"
+                fill="rgba(255,255,255,0.95)"
+                stroke="rgba(120,110,140,0.6)"
+                strokeWidth="1"
+              />
+              <path
+                d="M16 16 C 23 4, 31 6, 28 15 C 31 24, 22 26, 16 16 Z"
+                fill="rgba(255,255,255,0.95)"
+                stroke="rgba(120,110,140,0.6)"
+                strokeWidth="1"
+              />
+            </g>
+            <line x1="16" y1="10" x2="16" y2="22" stroke="rgba(90,80,110,0.8)" strokeWidth="1.6" />
+          </svg>
+        </div>
+      )}
+
+      {/* Feed sparkle at the bowl (Roam only). */}
+      {!grab && fed && (
+        <div className="feed-sparkle" aria-hidden>
+          <span>✨</span>
+          <span>🍚</span>
+          <span>✨</span>
+        </div>
+      )}
+
       <div
         ref={containerRef}
-        className={placed ? 'cat-container placed' : 'cat-container'}
+        className={containerClass}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onClick={onClick}
@@ -252,6 +441,21 @@ export default function App() {
               transition={{ duration: 0.25 }}
             >
               🐾 <b>놀기 모드</b>로 시작해요. 잡으려면 트레이 아이콘 또는 <b>⌘⇧C</b>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Greeting bubble — every launch, unless the first-run hint is up. */}
+        <AnimatePresence>
+          {greeting && !hint && (
+            <motion.div
+              className="greet"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              안녕! 😺
             </motion.div>
           )}
         </AnimatePresence>
@@ -307,9 +511,14 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* The cat itself — flips to face its travel direction. */}
+        {/* The cat itself — flips to face its travel direction. The `.cat-fx`
+            wrapper carries the flourish/interaction transforms (yawn, stretch,
+            purr, pounce, greeting wiggle, pet squish) so they never collide
+            with the flip or the resting breathing. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
-          <Cat state={state} gait={gait} color={config.catColor} />
+          <div className={fx.join(' ')}>
+            <Cat state={effectiveState} gait={gait} color={config.catColor} />
+          </div>
         </div>
       </div>
     </div>

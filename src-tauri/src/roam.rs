@@ -17,10 +17,17 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{AppState, WanderEvent, CAT_SIZE, WANDER_MARGIN};
+use crate::{AppState, ButterflyEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD, WANDER_MARGIN};
 
 /// Poll cadence. We only schedule hops (not animate), so a lazy tick is plenty.
 const TICK_MS: u64 = 200;
+
+/// Yawn / stretch flourishes fire this often (seconds, range) while the cat is
+/// resting. Purely a scheduler timer — no polling, no extra thread.
+const SUB_EVENT_S: (f64, f64) = (30.0, 120.0);
+
+/// Butterfly chases fire this often (seconds, range) in the playful moods.
+const BUTTERFLY_S: (f64, f64) = (60.0, 180.0);
 
 /// Grace before the first hop, and after returning from Grab mode, so the cat
 /// doesn't lurch the instant it's placed or released.
@@ -167,27 +174,74 @@ fn params(state: &str) -> Option<HopParams> {
     })
 }
 
+/// State the scheduler carries between ticks (all on the wander thread).
+struct Sched {
+    /// When the next hop may begin. `None` => (re)arm with a grace delay.
+    next_hop: Option<Instant>,
+    /// When the next yawn/stretch flourish may fire.
+    next_sub: Option<Instant>,
+    /// When the next butterfly chase may fire.
+    next_butterfly: Option<Instant>,
+}
+
 /// Launch the wander loop. Cheap when idle or grabbed.
 pub fn spawn(app: AppHandle) {
     std::thread::spawn(move || {
         let mut rng = Rng::new();
-        // When the next hop may begin. `None` => (re)arm with a grace delay.
-        let mut next_hop: Option<Instant> = None;
+        let mut sched = Sched {
+            next_hop: None,
+            next_sub: None,
+            // Don't pester the user with a butterfly the instant the app opens.
+            next_butterfly: Some(Instant::now() + Duration::from_secs(45)),
+        };
 
         loop {
-            tick(&app, &mut rng, &mut next_hop);
+            tick(&app, &mut rng, &mut sched);
             std::thread::sleep(Duration::from_millis(TICK_MS));
         }
     });
 }
 
+/// Fire a yawn/stretch flourish now and then, but only when the cat is resting
+/// (busy / agitated moods look wrong yawning). Re-arms its own timer each call;
+/// arming happens lazily so the first flourish is always `SUB_EVENT_S` out.
+fn maybe_sub_event(app: &AppHandle, rng: &mut Rng, now: Instant, sched: &mut Sched, cat_state: &str) {
+    match sched.next_sub {
+        None => {
+            sched.next_sub = Some(now + Duration::from_secs_f64(rng.range(SUB_EVENT_S.0, SUB_EVENT_S.1)));
+            return;
+        }
+        Some(at) if now < at => return,
+        _ => {}
+    }
+    // Due: re-arm regardless, then emit only in a resting mood.
+    sched.next_sub = Some(now + Duration::from_secs_f64(rng.range(SUB_EVENT_S.0, SUB_EVENT_S.1)));
+    let resting = matches!(cat_state, "sleeping" | "exhausted" | "alert" | "curious" | "playing");
+    if !resting {
+        return;
+    }
+    let (kind, duration_ms) = if rng.unit() < 0.5 {
+        ("yawn", 1200u64)
+    } else {
+        ("stretch", 1500u64)
+    };
+    let _ = app.emit(
+        "cat-sub-event",
+        SubEvent {
+            kind: kind.to_string(),
+            duration_ms,
+        },
+    );
+}
+
 /// One scheduler iteration.
-fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
+fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
     let state = app.state::<AppState>();
 
-    // Grab mode (or no window) → freeze and re-arm the grace timer.
+    // Grab mode (or no window) → freeze everything (hops, flourishes, butterfly)
+    // and re-arm the grace timer.
     if !state.is_roam() {
-        *next_hop = None;
+        sched.next_hop = None;
         return;
     }
 
@@ -200,16 +254,29 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
     let _ = win.set_ignore_cursor_events(true);
 
     let now = Instant::now();
-    match *next_hop {
+    let cat_state = state.cat_state();
+
+    // Yawn/stretch flourishes are scheduled independently of hops so they can
+    // fire while the cat is idle *between* hops (the gate below returns early).
+    maybe_sub_event(app, rng, now, sched, &cat_state);
+
+    // Just fed? Linger at the bowl — keep re-arming a short hold so the wander
+    // loop doesn't drag the cat off its meal (see `feed_cat` in lib.rs).
+    if let Some(t) = state.last_feed() {
+        if t.elapsed() < FEED_HOLD {
+            sched.next_hop = Some(now + Duration::from_millis(300));
+            return;
+        }
+    }
+
+    match sched.next_hop {
         Some(at) if now < at => return,
         None => {
-            *next_hop = Some(now + GRACE);
+            sched.next_hop = Some(now + GRACE);
             return;
         }
         _ => {}
     }
-
-    let cat_state = state.cat_state();
 
     let Some(wa) = crate::workarea(&win) else {
         return;
@@ -219,6 +286,50 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
     let max_y = (h_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
 
     let (px, py) = state.cat_pos().unwrap_or_else(|| crate::default_cat_pos(&wa));
+
+    // Playful moods occasionally chase a butterfly instead of a plain hop. The
+    // butterfly appears just above the cat, flutters off to `target`, and the
+    // cat runs after it; the frontend fades the butterfly + plays a pounce when
+    // the flutter finishes (see App.tsx).
+    if matches!(cat_state.as_str(), "playing" | "curious")
+        && sched.next_butterfly.map_or(false, |t| now >= t)
+    {
+        let base = w_log.min(h_log);
+        let dist = rng.range(0.28, 0.5) * base;
+        let angle = rng.range(0.0, std::f64::consts::TAU);
+        let tx = (px + angle.cos() * dist).clamp(WANDER_MARGIN, max_x);
+        let ty = (py + angle.sin() * dist).clamp(WANDER_MARGIN, max_y);
+        let bx = (px + CAT_SIZE * 0.5).clamp(WANDER_MARGIN, max_x);
+        let by = (py - CAT_SIZE * 0.1).clamp(WANDER_MARGIN, max_y);
+        let dur_ms = rng.range(2200.0, 3600.0) as u64;
+        let _ = app.emit(
+            "cat-butterfly",
+            ButterflyEvent {
+                x: bx,
+                y: by,
+                target_x: tx,
+                target_y: ty,
+                duration_ms: dur_ms,
+            },
+        );
+        let direction = if tx < px { "left" } else { "right" };
+        let _ = app.emit(
+            "cat-wander",
+            WanderEvent {
+                x: tx,
+                y: ty,
+                duration_ms: dur_ms,
+                direction: direction.to_string(),
+                gait: "run".to_string(),
+            },
+        );
+        state.set_cat_pos(tx, ty);
+        sched.next_butterfly =
+            Some(now + Duration::from_secs_f64(rng.range(BUTTERFLY_S.0, BUTTERFLY_S.1)));
+        sched.next_hop =
+            Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(1.5, 3.0)));
+        return;
+    }
 
     // Mood-anchored props: some moods send the cat to a specific piece of
     // furniture instead of free roaming. Ground props can sit lower than the
@@ -249,7 +360,7 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
                 },
             );
             state.set_cat_pos(ax, ay);
-            *next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_millis(400));
+            sched.next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_millis(400));
             return;
         }
 
@@ -270,17 +381,17 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
                 },
             );
             state.set_cat_pos(tx, ty);
-            *next_hop =
+            sched.next_hop =
                 Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(0.4, 1.1)));
         } else {
-            *next_hop = Some(now + Duration::from_secs(2));
+            sched.next_hop = Some(now + Duration::from_secs(2));
         }
         return;
     }
 
     // Free roam (playing / curious / active / unknown).
     let Some(p) = params(&cat_state) else {
-        *next_hop = Some(now + Duration::from_secs(2));
+        sched.next_hop = Some(now + Duration::from_secs(2));
         return;
     };
 
@@ -317,5 +428,5 @@ fn tick(app: &AppHandle, rng: &mut Rng, next_hop: &mut Option<Instant>) {
 
     // Next hop = travel time + a mood-dependent pause (±20% jitter).
     let pause = rng.range(p.pause.0, p.pause.1) * rng.range(0.8, 1.2);
-    *next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(pause));
+    sched.next_hop = Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(pause));
 }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Cat } from './components/Cat/Cat';
 import { useUsage } from './hooks/useUsage';
@@ -16,6 +17,20 @@ export default function Details() {
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
     save({ ...config, thresholds: { ...config.thresholds, [k]: v } });
+
+  // Feed button + 60s cooldown (the Rust side rate-limits too, so a `false`
+  // return just means it's still cooling down).
+  const [feedLeft, setFeedLeft] = useState(0);
+  const feed = async () => {
+    if (feedLeft > 0) return;
+    const ok = await invoke<boolean>('feed_cat').catch(() => false);
+    if (ok) setFeedLeft(60);
+  };
+  useEffect(() => {
+    if (feedLeft <= 0) return;
+    const id = setInterval(() => setFeedLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [feedLeft > 0]);
 
   const dailyRatio = config.dailyBudget > 0 ? usage.today_cost / config.dailyBudget : 0;
 
@@ -94,6 +109,16 @@ export default function Details() {
             ))}
           </div>
         </div>
+
+        <button
+          type="button"
+          className="d-feed"
+          onClick={feed}
+          disabled={feedLeft > 0}
+          title="고양이에게 먹이를 줍니다 (60초 쿨다운)"
+        >
+          {feedLeft > 0 ? `🍚 냠냠… (${feedLeft}s)` : '🍚 먹이 주기'}
+        </button>
 
         <label className="d-field">
           <span>일일 예산 (USD)</span>
