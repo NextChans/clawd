@@ -8,8 +8,10 @@ import { Butterfly } from './components/Playthings/Butterfly';
 import { Ball } from './components/Playthings/Ball';
 import { Yarn } from './components/Playthings/Yarn';
 import { Bird } from './components/Playthings/Bird';
+import { PeerCats } from './components/Peers/PeerCats';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
+import { usePresence } from './hooks/usePresence';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
@@ -82,6 +84,8 @@ export default function App() {
   const usage = useUsage();
   const { config } = useConfig();
   const { state, reason } = classifyWithReason(usage, config);
+  // Social mode: cats from clawd peers on the LAN (empty unless opted in).
+  const peers = usePresence(config, state);
   const [hover, setHover] = useState(false);
   // Tooltip placement, recomputed each time it's shown so it never clips out of
   // the (small, edge-clamped) grab window.
@@ -464,6 +468,10 @@ export default function App() {
           towerTier={usage.tower_tier}
         />
       )}
+
+      {/* Visiting peer cats (social mode, Roam only). Empty when the network
+          toggle is off, so this renders nothing for the default local setup. */}
+      {!grab && <PeerCats peers={peers} />}
 
       {/* Plaything the cat reacts to (Roam only). The outer element is glided
           imperatively via flyRef; the inner element carries the per-kind CSS

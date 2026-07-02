@@ -5,6 +5,7 @@
 //! + auto-wander) and **Grab** (interactive, frozen) — the wander animation, the
 //! tray, and native notifications.
 
+mod presence;
 mod roam;
 mod tray;
 mod usage;
@@ -521,6 +522,7 @@ fn spawn_poller(app: AppHandle) {
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(AppState::default())
+        .manage(presence::Presence::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build());
@@ -586,6 +588,9 @@ pub fn run() {
             get_cat_pos,
             enter_grab,
             feed_cat,
+            presence::presence_start,
+            presence::presence_publish,
+            presence::presence_stop,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

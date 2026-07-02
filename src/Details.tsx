@@ -185,6 +185,40 @@ export default function Details() {
           </button>
         </label>
 
+        <label
+          className="d-toggle"
+          title="같은 네트워크(Wi-Fi)의 다른 clawd 고양이를 화면에 초대하고, 서로의 대략적 활동 현황을 봅니다"
+        >
+          <span className="d-toggle-label">🐈 네트워크에서 친구 초대</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={config.networkEnabled}
+            aria-label="네트워크에서 친구 초대"
+            className={config.networkEnabled ? 'd-switch on' : 'd-switch'}
+            onClick={() => patch({ networkEnabled: !config.networkEnabled })}
+          >
+            <span className="d-switch-knob" />
+          </button>
+        </label>
+
+        {config.networkEnabled && (
+          <label className="d-field-col d-nick">
+            <span>닉네임 (친구 화면에 표시)</span>
+            <input
+              type="text"
+              className="d-nick-input"
+              maxLength={16}
+              placeholder="예: 채니"
+              value={config.nickname}
+              onChange={(e) => patch({ nickname: e.target.value })}
+            />
+            <span className="d-nick-note">
+              공유: 닉네임 · 색 · 기분 · 대략적 활동량뿐. 토큰 수·비용·프로젝트명은 공유하지 않아요.
+            </span>
+          </label>
+        )}
+
         <button
           type="button"
           className="d-feed"

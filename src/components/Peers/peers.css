@@ -1,0 +1,70 @@
+/* =========================================================
+   Peer cats (social mode) — visiting cats gathered along the
+   bottom-left of the overlay. Click-through decoration, so the
+   strip never eats pointer events meant for the desktop.
+   ========================================================= */
+.peer-strip {
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  max-width: min(70vw, 900px);
+  flex-wrap: wrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.peer-cat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 76px;
+  /* Gentle idle bob so visitors feel alive without a wander loop. */
+  animation: peer-bob 3.8s ease-in-out infinite;
+}
+
+@keyframes peer-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.peer-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 96px;
+  margin-bottom: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(28, 24, 22, 0.72);
+  color: #fbf7f0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(3px);
+}
+
+.peer-badge {
+  font-size: 12px;
+}
+
+.peer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.peer-sprite {
+  width: 72px;
+  height: 72px;
+  /* Peers read as slightly further away than your own cat. */
+  opacity: 0.94;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.22));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peer-cat { animation: none; }
+}

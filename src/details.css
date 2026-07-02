@@ -328,3 +328,23 @@
   color: #fff;
   font-weight: 600;
 }
+
+/* ---- social mode: nickname field ---- */
+.d-nick { gap: 6px; }
+.d-nick-input {
+  padding: 6px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font-size: 13px;
+}
+.d-nick-input:focus {
+  outline: none;
+  border-color: #e5794b;
+}
+.d-nick-note {
+  font-size: 11px;
+  opacity: 0.6;
+  line-height: 1.4;
+}

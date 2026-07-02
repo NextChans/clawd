@@ -23,6 +23,8 @@ function merge(partial: Partial<Config> | undefined | null): Config {
     autostart: p.autostart ?? DEFAULT_CONFIG.autostart,
     catScale: clampScale(p.catScale),
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
+    networkEnabled: p.networkEnabled ?? DEFAULT_CONFIG.networkEnabled,
+    nickname: typeof p.nickname === 'string' ? p.nickname : DEFAULT_CONFIG.nickname,
   };
 }
 

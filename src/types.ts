@@ -102,6 +102,14 @@ export interface Config {
   /** Visual size multiplier for the cat sprite (0.5–2.0, default 1.0). Purely
    * cosmetic — the overlay geometry Rust reasons about stays fixed. */
   catScale: number;
+  /** Social mode (LAN presence). Opt-in and off by default: while on, the app
+   * advertises a *coarse* status (nickname, coat color, mood, activity bucket —
+   * never token counts or project names) to other clawd instances on the same
+   * local network, and shows their cats on screen. */
+  networkEnabled: boolean;
+  /** Display name shown under your cat on peers' screens. Empty → the hook
+   * falls back to a generated "cat-1234" style name. */
+  nickname: string;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -114,6 +122,8 @@ export const DEFAULT_CONFIG: Config = {
   catColor: 'cream',
   autostart: false,
   catScale: CAT_SCALE_DEFAULT,
+  networkEnabled: false,
+  nickname: '',
 };
 
 export type CatState =
@@ -124,3 +134,36 @@ export type CatState =
   | 'alert'
   | 'angry'
   | 'exhausted';
+
+/** Coarse "how busy" bucket shared over the network in place of raw numbers. */
+export type ActivityBucket = 'idle' | 'light' | 'busy' | 'intense';
+
+/** A peer clawd on the LAN. Mirrors `PresencePayload` in
+ * src-tauri/src/presence.rs — the entire wire format for social mode. */
+export interface Peer {
+  id: string;
+  nickname: string;
+  color: CatColor;
+  state: CatState;
+  activity: ActivityBucket;
+}
+
+/** Map a cat mood onto the coarse activity bucket peers see. Keeps exact
+ * tokens/min private while still conveying a vibe. */
+export const ACTIVITY_FOR_STATE: Record<CatState, ActivityBucket> = {
+  sleeping: 'idle',
+  playing: 'light',
+  curious: 'light',
+  active: 'busy',
+  alert: 'busy',
+  angry: 'intense',
+  exhausted: 'intense',
+};
+
+/** Badge glyph + label per activity bucket, for the peer name tag. */
+export const ACTIVITY_BADGE: Record<ActivityBucket, { icon: string; label: string }> = {
+  idle: { icon: '💤', label: '쉬는 중' },
+  light: { icon: '🐾', label: '여유' },
+  busy: { icon: '🔥', label: '바쁨' },
+  intense: { icon: '⚡', label: '폭주' },
+};
