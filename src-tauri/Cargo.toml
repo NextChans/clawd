@@ -4,6 +4,7 @@ version = "0.5.0"
 description = "Cute floating cat that shows Claude Code usage on macOS"
 authors = ["chani"]
 edition = "2021"
+license = "MIT"
 
 [lib]
 # The `_lib` suffix keeps the lib name unique so it doesn't clash with the bin

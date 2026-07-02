@@ -1,5 +1,10 @@
 # 🐱 clawd
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+![Latest Release](https://img.shields.io/github/v/release/NextChans/clawd)
+
+> A cute floating cat that lives on your Mac and reacts to your Claude Code usage.
+
 > Cute floating cat that shows your Claude Code usage on macOS.
 
 A tiny, frameless, always-on-top cat that lives on your desktop and changes its
@@ -350,4 +355,4 @@ clawd/
 
 ## License
 
-Personal project — do what you like. No warranty. 🐾
+MIT License. See [LICENSE](./LICENSE). 🐾
