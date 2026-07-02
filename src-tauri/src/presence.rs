@@ -16,15 +16,28 @@
 //! user has flipped the network toggle on.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use bytes::Bytes;
+use futures_lite::StreamExt;
+use iroh::{Endpoint, NodeAddr, RelayMode, SecretKey, Watcher};
+use iroh_gossip::{
+    api::Event,
+    net::{Gossip, GOSSIP_ALPN},
+    proto::TopicId,
+};
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
+
+/// Callback the transports hand received peer payloads to.
+type OnRecv = Arc<dyn Fn(PresencePayload) + Send + Sync>;
 
 /// mDNS service type clawd instances advertise + browse for.
 const SERVICE_TYPE: &str = "_clawd-presence._udp.local.";
@@ -60,17 +73,13 @@ pub struct PresencePayload {
     pub activity: String,
 }
 
-/// A discovery + delivery mechanism for presence payloads. LAN today; a WAN
-/// (iroh) transport can implement the same trait later without the engine or
-/// frontend noticing.
+/// A discovery + delivery mechanism for presence payloads. LAN (mDNS) and WAN
+/// (iroh rooms) both feed the same engine through this shape.
 pub trait Transport: Send {
     /// Begin discovering peers and receiving their payloads. Received payloads
     /// are handed to `on_recv` from a background thread the transport owns.
     /// Cheap to call after the local payload has been seeded via [`set_local`].
-    fn start(
-        &mut self,
-        on_recv: Box<dyn Fn(PresencePayload) + Send + 'static>,
-    ) -> Result<(), String>;
+    fn start(&mut self, on_recv: OnRecv) -> Result<(), String>;
     /// Update the payload the transport periodically broadcasts. Safe to call
     /// before `start` (it's the seed) or repeatedly after (a live update).
     fn set_local(&self, payload: PresencePayload);
@@ -109,10 +118,7 @@ impl Default for LanTransport {
 }
 
 impl Transport for LanTransport {
-    fn start(
-        &mut self,
-        on_recv: Box<dyn Fn(PresencePayload) + Send + 'static>,
-    ) -> Result<(), String> {
+    fn start(&mut self, on_recv: OnRecv) -> Result<(), String> {
         if self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -244,7 +250,182 @@ impl Transport for LanTransport {
 }
 
 // ---------------------------------------------------------------------------
-// Engine — owns the transport + the live peer table, and pushes `peers`
+// WAN transport — iroh gossip "rooms" for remote friends. QUIC hole-punching
+// with n0's public relays as fallback (no server of our own). Same coarse
+// payload, carried over a gossip topic. Async, so it runs on its own tokio
+// runtime thread.
+// ---------------------------------------------------------------------------
+
+/// How often the iroh transport rebroadcasts our payload into the room.
+const IROH_PUBLISH_INTERVAL: Duration = Duration::from_secs(5);
+
+/// A room invite: the gossip topic plus bootstrap peer addresses. Serialized to
+/// a base32 "room code" the user shares. Mirrors the iroh-gossip chat example.
+#[derive(Debug, Serialize, Deserialize)]
+struct RoomTicket {
+    topic: TopicId,
+    peers: Vec<NodeAddr>,
+}
+
+impl RoomTicket {
+    fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        Ok(postcard::from_bytes(bytes)?)
+    }
+    fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_stdvec(self).expect("postcard::to_stdvec is infallible")
+    }
+}
+
+impl fmt::Display for RoomTicket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut text = data_encoding::BASE32_NOPAD.encode(&self.to_bytes());
+        text.make_ascii_lowercase();
+        write!(f, "{text}")
+    }
+}
+
+impl FromStr for RoomTicket {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let bytes = data_encoding::BASE32_NOPAD.decode(s.to_ascii_uppercase().as_bytes())?;
+        Self::from_bytes(&bytes)
+    }
+}
+
+/// Called with the base32 room code once our endpoint is up (so the UI can show
+/// it to share).
+type OnRoom = Arc<dyn Fn(String) + Send + Sync>;
+
+/// The async heart of the iroh transport: build endpoint + gossip, join/open
+/// the room, then broadcast our latest payload on a cadence while handing
+/// received payloads to `on_recv`, until `running` clears.
+#[allow(clippy::too_many_arguments)]
+async fn run_room(
+    secret: SecretKey,
+    room: Option<RoomTicket>,
+    local: Arc<Mutex<Option<PresencePayload>>>,
+    running: Arc<AtomicBool>,
+    on_recv: OnRecv,
+    on_room: OnRoom,
+) -> anyhow::Result<()> {
+    let endpoint = Endpoint::builder()
+        .secret_key(secret)
+        .relay_mode(RelayMode::Default)
+        .bind()
+        .await?;
+    let gossip = Gossip::builder().spawn(endpoint.clone());
+    let router = iroh::protocol::Router::builder(endpoint.clone())
+        .accept(GOSSIP_ALPN, gossip.clone())
+        .spawn();
+
+    let (topic, bootstrap): (TopicId, Vec<NodeAddr>) = match room {
+        Some(t) => (t.topic, t.peers),
+        None => (TopicId::from_bytes(rand::random()), vec![]),
+    };
+
+    // Publish a shareable code that includes our own address, so joiners can
+    // bootstrap off us even if the original host is gone.
+    let me = endpoint.node_addr().initialized().await;
+    let mut peers = bootstrap.clone();
+    if !peers.iter().any(|p| p.node_id == me.node_id) {
+        peers.push(me);
+    }
+    on_room(RoomTicket { topic, peers }.to_string());
+
+    for peer in &bootstrap {
+        let _ = endpoint.add_node_addr(peer.clone());
+    }
+    let bootstrap_ids: Vec<_> = bootstrap.iter().map(|p| p.node_id).collect();
+
+    let (sender, mut receiver) = gossip.subscribe_and_join(topic, bootstrap_ids).await?.split();
+
+    let mut ticker = tokio::time::interval(IROH_PUBLISH_INTERVAL);
+    loop {
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+        tokio::select! {
+            _ = ticker.tick() => {
+                let payload = local.lock().unwrap().clone();
+                if let Some(payload) = payload {
+                    if let Ok(json) = serde_json::to_vec(&payload) {
+                        let _ = sender.broadcast(Bytes::from(json)).await;
+                    }
+                }
+            }
+            event = receiver.try_next() => {
+                match event {
+                    Ok(Some(Event::Received(msg))) => {
+                        if let Ok(payload) = serde_json::from_slice::<PresencePayload>(&msg.content) {
+                            on_recv(payload);
+                        }
+                    }
+                    Ok(Some(_)) => {}
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        }
+    }
+
+    let _ = router.shutdown().await;
+    Ok(())
+}
+
+/// WAN transport handle. Owns a tokio runtime on its own thread. Off until
+/// [`IrohTransport::start`].
+struct IrohTransport {
+    local: Arc<Mutex<Option<PresencePayload>>>,
+    running: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+    /// hex secret key + optional room code to join (`None` → open a new room).
+    secret_hex: String,
+    room_code: Option<String>,
+}
+
+impl IrohTransport {
+    fn new(secret_hex: String, room_code: Option<String>) -> Self {
+        Self {
+            local: Arc::new(Mutex::new(None)),
+            running: Arc::new(AtomicBool::new(false)),
+            thread: None,
+            secret_hex,
+            room_code,
+        }
+    }
+
+    fn set_local(&self, payload: PresencePayload) {
+        *self.local.lock().unwrap() = Some(payload);
+    }
+
+    fn start(&mut self, on_recv: OnRecv, on_room: OnRoom) -> Result<(), String> {
+        let secret: SecretKey = self.secret_hex.parse().map_err(|e| format!("bad key: {e}"))?;
+        let room = match &self.room_code {
+            Some(code) => Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?),
+            None => None,
+        };
+        self.running.store(true, Ordering::SeqCst);
+        let local = self.local.clone();
+        let running = self.running.clone();
+        self.thread = Some(std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+                Ok(rt) => rt,
+                Err(_) => return,
+            };
+            let _ = rt.block_on(run_room(secret, room, local, running, on_recv, on_room));
+        }));
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        self.running.store(false, Ordering::SeqCst);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Engine — owns the transport(s) + the live peer table, and pushes `peers`
 // snapshots to the frontend. Managed as Tauri state.
 // ---------------------------------------------------------------------------
 
@@ -253,43 +434,41 @@ struct PeerEntry {
     last_seen: Instant,
 }
 
-/// Managed state binding the transport to the frontend. Off (no sockets, no
-/// threads) until [`presence_start`].
+/// Managed state binding the transports to the frontend. Both LAN and remote
+/// feed the same peer table + `peers` events, so friends from either show up
+/// together. Off (no sockets, threads, or endpoints) until the frontend opts
+/// in. The stale-sweep runs whenever *either* transport is active.
 pub struct Presence {
-    transport: Mutex<LanTransport>,
+    lan: Mutex<LanTransport>,
+    iroh: Mutex<Option<IrohTransport>>,
     peers: Arc<Mutex<HashMap<String, PeerEntry>>>,
-    running: Arc<AtomicBool>,
+    lan_on: AtomicBool,
+    iroh_on: AtomicBool,
+    prune_running: Arc<AtomicBool>,
     prune: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Default for Presence {
     fn default() -> Self {
         Self {
-            transport: Mutex::new(LanTransport::new()),
+            lan: Mutex::new(LanTransport::new()),
+            iroh: Mutex::new(None),
             peers: Arc::new(Mutex::new(HashMap::new())),
-            running: Arc::new(AtomicBool::new(false)),
+            lan_on: AtomicBool::new(false),
+            iroh_on: AtomicBool::new(false),
+            prune_running: Arc::new(AtomicBool::new(false)),
             prune: Mutex::new(None),
         }
     }
 }
 
 impl Presence {
-    fn start(&self, app: &AppHandle, payload: PresencePayload) -> Result<(), String> {
-        // Seed the outgoing payload first so the very first heartbeat is real.
-        {
-            let t = self.transport.lock().unwrap();
-            t.set_local(payload);
-        }
-
-        if self.running.load(Ordering::SeqCst) {
-            return Ok(()); // already up — the seed above is the live update
-        }
-
-        // On each received payload: upsert the peer table and push a fresh
-        // snapshot to the frontend.
+    /// A receive callback that upserts the peer table and re-emits to the UI.
+    /// Shared by both transports so a peer from either lands in one roster.
+    fn make_on_recv(&self, app: &AppHandle) -> OnRecv {
         let peers = self.peers.clone();
-        let app_recv = app.clone();
-        let on_recv = Box::new(move |p: PresencePayload| {
+        let app = app.clone();
+        Arc::new(move |p: PresencePayload| {
             {
                 let mut table = peers.lock().unwrap();
                 table.insert(
@@ -300,37 +479,121 @@ impl Presence {
                     },
                 );
             }
-            emit_peers(&app_recv, &peers);
-        });
+            emit_peers(&app, &peers);
+        })
+    }
 
-        self.transport.lock().unwrap().start(on_recv)?;
-        self.running.store(true, Ordering::SeqCst);
-
-        // Stale sweep: drop peers we've stopped hearing from and re-emit.
-        let peers_prune = self.peers.clone();
-        let running = self.running.clone();
-        let app_prune = app.clone();
+    /// Start the stale-sweep thread if it isn't already running.
+    fn ensure_prune(&self, app: &AppHandle) {
+        if self.prune_running.swap(true, Ordering::SeqCst) {
+            return; // already running
+        }
+        let peers = self.peers.clone();
+        let running = self.prune_running.clone();
+        let app = app.clone();
         *self.prune.lock().unwrap() = Some(std::thread::spawn(move || {
             while running.load(Ordering::SeqCst) {
                 std::thread::sleep(PRUNE_INTERVAL);
                 let removed = {
-                    let mut table = peers_prune.lock().unwrap();
+                    let mut table = peers.lock().unwrap();
                     let before = table.len();
                     table.retain(|_, e| e.last_seen.elapsed() < PEER_STALE);
                     before != table.len()
                 };
                 if removed {
-                    emit_peers(&app_prune, &peers_prune);
+                    emit_peers(&app, &peers);
                 }
             }
         }));
+    }
 
+    /// Once both transports are down, stop the sweep and clear the roster.
+    fn teardown_if_idle(&self, app: &AppHandle) {
+        if self.lan_on.load(Ordering::SeqCst) || self.iroh_on.load(Ordering::SeqCst) {
+            return;
+        }
+        self.prune_running.store(false, Ordering::SeqCst);
+        if let Some(h) = self.prune.lock().unwrap().take() {
+            let _ = h.join();
+        }
+        self.peers.lock().unwrap().clear();
+        let _ = app.emit("peers", Vec::<PresencePayload>::new());
+    }
+
+    // --- LAN ---------------------------------------------------------------
+
+    fn start_lan(&self, app: &AppHandle, payload: PresencePayload) -> Result<(), String> {
+        self.lan.lock().unwrap().set_local(payload);
+        if self.lan_on.load(Ordering::SeqCst) {
+            return Ok(()); // already up — the seed above is the live update
+        }
+        let on_recv = self.make_on_recv(app);
+        self.lan.lock().unwrap().start(on_recv)?;
+        self.lan_on.store(true, Ordering::SeqCst);
+        self.ensure_prune(app);
         Ok(())
     }
 
+    fn stop_lan(&self, app: &AppHandle) {
+        if !self.lan_on.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        self.lan.lock().unwrap().stop();
+        self.teardown_if_idle(app);
+    }
+
+    // --- Remote (iroh rooms) ----------------------------------------------
+
+    /// Open a fresh room (`code = None`) or join an existing one. The base32
+    /// room code is delivered to the frontend via the `remote-room-code` event
+    /// once the endpoint is up.
+    fn remote_start(
+        &self,
+        app: &AppHandle,
+        payload: PresencePayload,
+        secret_hex: String,
+        code: Option<String>,
+    ) -> Result<(), String> {
+        // Rejoin cleanly if already in a room.
+        if self.iroh_on.swap(false, Ordering::SeqCst) {
+            if let Some(mut t) = self.iroh.lock().unwrap().take() {
+                t.stop();
+            }
+        }
+
+        let mut transport = IrohTransport::new(secret_hex, code);
+        transport.set_local(payload);
+        let on_recv = self.make_on_recv(app);
+        let app_room = app.clone();
+        let on_room: OnRoom = Arc::new(move |room_code: String| {
+            let _ = app_room.emit("remote-room-code", room_code);
+        });
+        transport.start(on_recv, on_room)?;
+        *self.iroh.lock().unwrap() = Some(transport);
+        self.iroh_on.store(true, Ordering::SeqCst);
+        self.ensure_prune(app);
+        Ok(())
+    }
+
+    fn remote_leave(&self, app: &AppHandle) {
+        if !self.iroh_on.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        if let Some(mut t) = self.iroh.lock().unwrap().take() {
+            t.stop();
+        }
+        self.teardown_if_idle(app);
+    }
+
+    /// Push a payload update to whichever transports are live.
     fn publish(&self, payload: PresencePayload) {
-        if self.running.load(Ordering::SeqCst) {
-            self.transport.lock().unwrap().set_local(payload);
+        if self.lan_on.load(Ordering::SeqCst) {
+            self.lan.lock().unwrap().set_local(payload.clone());
+        }
+        if self.iroh_on.load(Ordering::SeqCst) {
+            if let Some(t) = self.iroh.lock().unwrap().as_ref() {
+                t.set_local(payload);
+            }
         }
     }
 
@@ -343,18 +606,6 @@ impl Presence {
             .values()
             .map(|e| e.payload.clone())
             .collect()
-    }
-
-    fn stop(&self, app: &AppHandle) {
-        if !self.running.swap(false, Ordering::SeqCst) {
-            return;
-        }
-        self.transport.lock().unwrap().stop();
-        if let Some(h) = self.prune.lock().unwrap().take() {
-            let _ = h.join();
-        }
-        self.peers.lock().unwrap().clear();
-        let _ = app.emit("peers", Vec::<PresencePayload>::new());
     }
 }
 
@@ -373,32 +624,63 @@ fn emit_peers(app: &AppHandle, peers: &Arc<Mutex<HashMap<String, PeerEntry>>>) {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// Turn presence on (opt-in) and seed our payload. Idempotent — calling again
-/// while running just updates the payload.
+/// Turn LAN presence on (opt-in) and seed our payload. Idempotent — calling
+/// again while running just updates the payload.
 #[tauri::command]
 pub fn presence_start(
     app: AppHandle,
     state: tauri::State<'_, Presence>,
     payload: PresencePayload,
 ) -> Result<(), String> {
-    state.start(&app, payload)
+    state.start_lan(&app, payload)
 }
 
 /// Update the coarse payload we broadcast (mood/color/nickname changed). No-op
-/// while presence is off.
+/// while presence is off. Applies to whichever transports are live.
 #[tauri::command]
 pub fn presence_publish(state: tauri::State<'_, Presence>, payload: PresencePayload) {
     state.publish(payload);
 }
 
-/// Leave the network: stop advertising, drop peers, clear the frontend.
+/// Leave the LAN: stop advertising there (remote room, if any, stays).
 #[tauri::command]
 pub fn presence_stop(app: AppHandle, state: tauri::State<'_, Presence>) {
-    state.stop(&app);
+    state.stop_lan(&app);
 }
 
 /// Snapshot of the peers currently online, for an instant paint on mount.
 #[tauri::command]
 pub fn presence_peers(state: tauri::State<'_, Presence>) -> Vec<PresencePayload> {
     state.peers_snapshot()
+}
+
+/// Open a fresh remote room. The base32 room code to share arrives via the
+/// `remote-room-code` event once our endpoint is up. `secret_hex` is a stable
+/// per-install iroh key (generated + persisted by the frontend).
+#[tauri::command]
+pub fn presence_remote_open(
+    app: AppHandle,
+    state: tauri::State<'_, Presence>,
+    payload: PresencePayload,
+    secret_hex: String,
+) -> Result<(), String> {
+    state.remote_start(&app, payload, secret_hex, None)
+}
+
+/// Join an existing remote room by its base32 code.
+#[tauri::command]
+pub fn presence_remote_join(
+    app: AppHandle,
+    state: tauri::State<'_, Presence>,
+    payload: PresencePayload,
+    secret_hex: String,
+    code: String,
+) -> Result<(), String> {
+    state.remote_start(&app, payload, secret_hex, Some(code))
+}
+
+/// Leave the remote room (LAN, if any, stays).
+#[tauri::command]
+pub fn presence_remote_leave(app: AppHandle, state: tauri::State<'_, Presence>) {
+    state.remote_leave(&app);
 }

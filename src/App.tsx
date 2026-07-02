@@ -479,10 +479,11 @@ export default function App() {
         />
       )}
 
-      {/* Visiting peer cats (social mode, Roam only). Gated on the toggle so
-          nothing shows for the default local setup. `getSelf`/`selfPlayful`
-          let a visitor drift over to play when you're both relaxed. */}
-      {!grab && config.networkEnabled && (
+      {/* Visiting peer cats (social mode, Roam only). `peers` is empty unless a
+          transport (LAN or remote room) is live, so this shows nothing for the
+          default local setup and covers remote-only sessions too.
+          `getSelf`/`selfPlayful` let a visitor drift over to play. */}
+      {!grab && (
         <PeerCats
           peers={peers}
           getSelf={() => ({ x: catXRef.current, y: catYRef.current })}

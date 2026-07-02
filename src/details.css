@@ -393,3 +393,39 @@
   opacity: 0.6;
   font-size: 11px;
 }
+
+/* ---- social mode: remote room ---- */
+.d-remote {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.d-room-row {
+  display: flex;
+  gap: 6px;
+}
+.d-room-row .d-nick-input {
+  flex: 1;
+  min-width: 0;
+}
+.d-room-status {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.d-room-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.d-room-btn:hover {
+  background: rgba(128, 128, 128, 0.18);
+}
+.d-room-btn.leave {
+  border-color: rgba(229, 121, 75, 0.5);
+  color: #e5794b;
+}

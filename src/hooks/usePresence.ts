@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ACTIVITY_FOR_STATE, CatState, Config, Peer } from '../types';
 
 const PEER_ID_KEY = 'clawd_peer_id';
+const IROH_SECRET_KEY = 'clawd_iroh_secret';
 
 /** Stable per-install id: generated once and persisted in localStorage so the
  * same machine keys to the same peer across restarts. */
@@ -19,11 +20,35 @@ function getPeerId(): string {
   return id;
 }
 
+/** Stable per-install iroh secret key as 64-char lowercase hex (32 bytes),
+ * generated once and persisted. Parsed by `iroh::SecretKey` on the Rust side. */
+function getIrohSecret(): string {
+  let s = localStorage.getItem(IROH_SECRET_KEY);
+  if (!s || !/^[0-9a-f]{64}$/.test(s)) {
+    const b = new Uint8Array(32);
+    crypto.getRandomValues(b);
+    s = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(IROH_SECRET_KEY, s);
+  }
+  return s;
+}
+
+/** Build the coarse payload we share — never token counts or project names. */
+function buildPayload(config: Config, state: CatState) {
+  const id = getPeerId();
+  return {
+    id,
+    nickname: config.nickname.trim() || `cat-${id.slice(0, 4)}`,
+    color: config.catColor,
+    state,
+    activity: ACTIVITY_FOR_STATE[state],
+  };
+}
+
 /**
- * Read-only view of the peers currently online. Pulls a snapshot on mount (so a
- * window that opens after discovery paints immediately) then rides the `peers`
- * events Rust emits on every join / leave / stale-drop. Safe to use from any
- * window — it never starts or stops the transport.
+ * Read-only view of the peers currently online (LAN + remote, merged). Pulls a
+ * snapshot on mount then rides the `peers` events Rust emits on every join /
+ * leave / stale-drop. Safe from any window — never starts or stops anything.
  */
 export function usePeers(): Peer[] {
   const [peers, setPeers] = useState<Peer[]>([]);
@@ -44,38 +69,82 @@ export function usePeers(): Peer[] {
 }
 
 /**
- * Publish side of social mode (LAN). When {@link Config.networkEnabled} is on,
- * broadcasts a *coarse* presence payload (nickname, coat color, mood, activity
- * bucket) to clawd peers on the same network via the Rust `presence_*`
- * commands. Owns start/stop, so it belongs to exactly one window (the cat
- * overlay). Shares no token counts, cost, or project names — see
- * `src-tauri/src/presence.rs`.
+ * Publish side of social mode. Broadcasts our coarse payload on state/identity
+ * changes to whatever transports are live (Rust no-ops per-transport when off),
+ * and owns the LAN toggle (start/stop on `config.networkEnabled`). Belongs to
+ * exactly one window (the cat overlay).
  */
 export function usePresencePublish(config: Config, state: CatState): void {
   const enabled = config.networkEnabled;
-
-  const id = getPeerId();
-  const nickname = config.nickname.trim() || `cat-${id.slice(0, 4)}`;
-  const color = config.catColor;
-  const activity = ACTIVITY_FOR_STATE[state];
+  const { id, nickname, color, activity } = buildPayload(config, state);
   const payload = { id, nickname, color, state, activity };
 
-  // Start on enable, stop on disable / unmount.
+  // LAN: start on enable, stop on disable / unmount.
   useEffect(() => {
     if (!enabled) return;
     invoke('presence_start', { payload }).catch(() => {});
     return () => {
       invoke('presence_stop').catch(() => {});
     };
-    // Only (re)start when the toggle flips — payload updates ride the effect
-    // below so changing identity mid-session doesn't tear the socket down.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
-  // Push live payload updates (mood / color / nickname changed) while enabled.
+  // Push live payload updates to every active transport (LAN and/or remote).
+  // Unconditional: the Rust side no-ops for any transport that's off.
   useEffect(() => {
-    if (!enabled) return;
     invoke('presence_publish', { payload }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, nickname, color, state, activity]);
+  }, [nickname, color, state, activity]);
+}
+
+export type RoomStatus = 'off' | 'hosting' | 'joined';
+
+/**
+ * Remote room controls (WAN, iroh). `open` hosts a fresh room and surfaces a
+ * base32 code to share (via the `remote-room-code` event); `join` connects to a
+ * code; `leave` disconnects. Peers found this way flow into the shared `peers`
+ * roster like LAN ones. Used from the details window.
+ */
+export function useRemoteRoom(config: Config, state: CatState) {
+  const [status, setStatus] = useState<RoomStatus>('off');
+  const [code, setCode] = useState<string>('');
+
+  useEffect(() => {
+    const un = listen<string>('remote-room-code', (e) => setCode(e.payload));
+    return () => {
+      un.then((off) => off());
+    };
+  }, []);
+
+  const open = useCallback(async () => {
+    setCode('');
+    await invoke('presence_remote_open', {
+      payload: buildPayload(config, state),
+      secretHex: getIrohSecret(),
+    });
+    setStatus('hosting');
+  }, [config, state]);
+
+  const join = useCallback(
+    async (roomCode: string) => {
+      const trimmed = roomCode.trim().toLowerCase();
+      if (!trimmed) return;
+      await invoke('presence_remote_join', {
+        payload: buildPayload(config, state),
+        secretHex: getIrohSecret(),
+        code: trimmed,
+      });
+      setCode(trimmed);
+      setStatus('joined');
+    },
+    [config, state],
+  );
+
+  const leave = useCallback(async () => {
+    await invoke('presence_remote_leave').catch(() => {});
+    setStatus('off');
+    setCode('');
+  }, []);
+
+  return { status, code, open, join, leave };
 }

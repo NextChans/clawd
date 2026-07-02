@@ -7,7 +7,7 @@ import { HourlySparkline } from './components/Charts/HourlySparkline';
 import { WeeklyHeatmap } from './components/Charts/WeeklyHeatmap';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
-import { usePeers } from './hooks/usePresence';
+import { usePeers, useRemoteRoom } from './hooks/usePresence';
 import { useUpdater } from './hooks/useUpdater';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { ACTIVITY_BADGE, CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
@@ -21,6 +21,8 @@ export default function Details() {
   const { state, reason } = classifyWithReason(usage, config);
   const updater = useUpdater();
   const peers = usePeers();
+  const room = useRemoteRoom(config, state);
+  const [joinCode, setJoinCode] = useState('');
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
@@ -244,6 +246,61 @@ export default function Details() {
             )}
           </div>
         )}
+
+        <div className="d-remote">
+          <div className="d-peers-head">🌐 원격 방 (다른 네트워크의 친구)</div>
+          {room.status === 'off' ? (
+            <>
+              <button type="button" className="d-room-btn" onClick={() => void room.open()}>
+                방 만들기
+              </button>
+              <div className="d-room-row">
+                <input
+                  type="text"
+                  className="d-nick-input"
+                  placeholder="초대 코드 붙여넣기"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                />
+                <button type="button" className="d-room-btn" onClick={() => void room.join(joinCode)}>
+                  참가
+                </button>
+              </div>
+              <span className="d-nick-note">
+                방을 만들면 초대 코드가 생겨요. 친구가 그 코드로 참가하면 서로의 고양이가 보입니다.
+                서버 없이 P2P로 연결돼요 (안 되면 공용 릴레이 경유).
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="d-room-status">
+                {room.status === 'hosting' ? '방 열림 · 이 코드를 친구에게 공유' : '방에 참가됨'}
+              </div>
+              {room.code ? (
+                <div className="d-room-row">
+                  <input
+                    className="d-nick-input"
+                    readOnly
+                    value={room.code}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    type="button"
+                    className="d-room-btn"
+                    onClick={() => void navigator.clipboard?.writeText(room.code)}
+                  >
+                    복사
+                  </button>
+                </div>
+              ) : (
+                <div className="d-nick-note">코드 생성 중…</div>
+              )}
+              <button type="button" className="d-room-btn leave" onClick={() => void room.leave()}>
+                나가기
+              </button>
+            </>
+          )}
+        </div>
 
         <button
           type="button"
