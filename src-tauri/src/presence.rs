@@ -334,6 +334,17 @@ impl Presence {
         }
     }
 
+    /// Current live peers, for a window that mounts after discovery has already
+    /// happened (events aren't retained, so a late listener needs a snapshot).
+    fn peers_snapshot(&self) -> Vec<PresencePayload> {
+        self.peers
+            .lock()
+            .unwrap()
+            .values()
+            .map(|e| e.payload.clone())
+            .collect()
+    }
+
     fn stop(&self, app: &AppHandle) {
         if !self.running.swap(false, Ordering::SeqCst) {
             return;
@@ -384,4 +395,10 @@ pub fn presence_publish(state: tauri::State<'_, Presence>, payload: PresencePayl
 #[tauri::command]
 pub fn presence_stop(app: AppHandle, state: tauri::State<'_, Presence>) {
     state.stop(&app);
+}
+
+/// Snapshot of the peers currently online, for an instant paint on mount.
+#[tauri::command]
+pub fn presence_peers(state: tauri::State<'_, Presence>) -> Vec<PresencePayload> {
+    state.peers_snapshot()
 }

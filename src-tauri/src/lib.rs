@@ -591,6 +591,7 @@ pub fn run() {
             presence::presence_start,
             presence::presence_publish,
             presence::presence_stop,
+            presence::presence_peers,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

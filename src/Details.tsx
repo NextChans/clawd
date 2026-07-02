@@ -7,9 +7,10 @@ import { HourlySparkline } from './components/Charts/HourlySparkline';
 import { WeeklyHeatmap } from './components/Charts/WeeklyHeatmap';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
+import { usePeers } from './hooks/usePresence';
 import { useUpdater } from './hooks/useUpdater';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
-import { CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
+import { ACTIVITY_BADGE, CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
 import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
 
@@ -19,6 +20,7 @@ export default function Details() {
   const { config, save } = useConfig();
   const { state, reason } = classifyWithReason(usage, config);
   const updater = useUpdater();
+  const peers = usePeers();
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
@@ -217,6 +219,30 @@ export default function Details() {
               공유: 닉네임 · 색 · 기분 · 대략적 활동량뿐. 토큰 수·비용·프로젝트명은 공유하지 않아요.
             </span>
           </label>
+        )}
+
+        {config.networkEnabled && (
+          <div className="d-peers">
+            <div className="d-peers-head">
+              네트워크 친구{peers.length > 0 ? ` (${peers.length})` : ''}
+            </div>
+            {peers.length === 0 ? (
+              <div className="d-peers-empty">같은 네트워크에서 clawd를 켠 친구를 찾는 중…</div>
+            ) : (
+              <ul className="d-peers-list">
+                {peers.map((p) => {
+                  const b = ACTIVITY_BADGE[p.activity] ?? ACTIVITY_BADGE.light;
+                  return (
+                    <li className="d-peer" key={p.id}>
+                      <span className="d-peer-badge">{b.icon}</span>
+                      <span className="d-peer-name">{p.nickname}</span>
+                      <span className="d-peer-act">{b.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
 
         <button
