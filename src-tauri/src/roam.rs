@@ -366,6 +366,10 @@ struct PlayPlan {
     dur: u64,
     /// `Some((x, y, duration_ms, gait))` if the cat should move in response.
     cat: Option<(f64, f64, u64, &'static str)>,
+    /// How long to hold the cat before it starts chasing, so a toy that's
+    /// thrown across the screen (the ball) clearly leads and the cat trails.
+    /// `0` for reactions that should start immediately.
+    cat_delay: u64,
 }
 
 /// Build the appearance + chase plan for a plaything `kind`, given the cat's
@@ -398,14 +402,30 @@ fn plaything_plan(
             let end_x = if from_left { max_x } else { WANDER_MARGIN };
             let y = ground(py + CAT_SIZE * 0.45);
             let dur = rng.range(1800.0, 2800.0) as u64;
+            // Throw the ball first, then chase. The ball rolls the full width
+            // from an edge, but the cat starts mid-screen — nearer the far end
+            // than the ball is. If both move over the same `dur`, the cat sits
+            // *ahead* of the ball the whole way, so it reads as "cat leads, ball
+            // trails" (the reported bug). Instead, hold the cat until the ball
+            // has rolled past its x (plus a gap), then let it run the remainder
+            // faster and catch up right as the ball settles — so the chase
+            // trails the toy and the catch-pounce (fired at the ball's end)
+            // lands on arrival.
+            let span = (end_x - start_x).abs().max(1.0);
+            let t_pass = dur as f64 * ((px - start_x).abs() / span);
+            let cat_delay = (t_pass + dur as f64 * 0.12)
+                .clamp(dur as f64 * 0.25, (dur as f64 - 300.0).max(0.0))
+                as u64;
+            let cat_dur = dur.saturating_sub(cat_delay).max(300);
             PlayPlan {
                 item_x: start_x,
                 item_y: y,
                 item_tx: end_x,
                 item_ty: y,
                 dur,
-                // Chase the ball to where it ends up.
-                cat: Some((clamp_x(end_x), py, dur, "run")),
+                // Chase the ball to where it ends up (after the head start).
+                cat: Some((clamp_x(end_x), py, cat_dur, "run")),
+                cat_delay,
             }
         }
         "yarn" => {
@@ -425,6 +445,7 @@ fn plaything_plan(
                 item_ty: ty,
                 dur,
                 cat: Some((cat_tx, py, rng.range(400.0, 700.0) as u64, "walk")),
+                cat_delay: 0,
             }
         }
         "bird" => {
@@ -442,6 +463,7 @@ fn plaything_plan(
                 item_ty: top_y,
                 dur,
                 cat: Some((mid_x, py, rng.range(700.0, 1200.0) as u64, "run")),
+                cat_delay: 0,
             }
         }
         // "butterfly" (and any unknown kind): flutter off on a random vector.
@@ -461,6 +483,7 @@ fn plaything_plan(
                 item_ty: ty,
                 dur,
                 cat: Some((tx, ty, dur, "run")),
+                cat_delay: 0,
             }
         }
     }
@@ -544,19 +567,32 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
 
         if let Some((cx, cy, cdur, gait)) = plan.cat {
             let direction = if cx < px { "left" } else { "right" };
-            let _ = app.emit(
-                "cat-wander",
-                WanderEvent {
-                    x: cx,
-                    y: cy,
-                    duration_ms: cdur,
-                    direction: direction.to_string(),
-                    gait: gait.to_string(),
-                },
-            );
+            let ev = WanderEvent {
+                x: cx,
+                y: cy,
+                duration_ms: cdur,
+                direction: direction.to_string(),
+                gait: gait.to_string(),
+            };
+            if plan.cat_delay == 0 {
+                let _ = app.emit("cat-wander", ev);
+            } else {
+                // Hold the chase so the toy leads (see the ball plan). Fire it
+                // from a short-lived timer thread, and bail if we've left roam
+                // (grabbed / dragged) before it triggers.
+                let app2 = app.clone();
+                let delay = plan.cat_delay;
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(delay));
+                    if app2.state::<AppState>().is_roam() {
+                        let _ = app2.emit("cat-wander", ev);
+                    }
+                });
+            }
             state.set_cat_pos(cx, cy);
             sched.next_hop = Some(
-                now + Duration::from_millis(cdur) + Duration::from_secs_f64(rng.range(1.5, 3.0)),
+                now + Duration::from_millis(plan.cat_delay + cdur)
+                    + Duration::from_secs_f64(rng.range(1.5, 3.0)),
             );
         } else {
             sched.next_hop = Some(now + Duration::from_millis(plan.dur));
