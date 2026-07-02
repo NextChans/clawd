@@ -22,12 +22,7 @@ to drag, click, or configure it.
 
 ## Screenshots
 
-> _Coming soon._ Drop images into [`docs/screenshots/`](docs/screenshots/) and
-> they'll show up here.
-
-| Roam | Grab | Details |
-|------|------|---------|
-| ![Roam mode — cat wandering](docs/screenshots/roam.png) | ![Grab mode — tooltip + ring](docs/screenshots/grab.png) | ![Details window](docs/screenshots/details.png) |
+![clawd — a cat wandering your desktop](docs/screenshots/roam.png)
 
 ---
 
