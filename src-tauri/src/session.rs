@@ -50,13 +50,15 @@ fn stored_token() -> Option<String> {
 /// Store the OAuth token in the OS keychain.
 #[tauri::command]
 pub fn session_set_token(token: String) -> Result<(), String> {
-    let t = token.trim();
+    // OAuth tokens carry no whitespace, so strip *all* of it — including the
+    // newline a wrapped two-line terminal paste sneaks into the middle.
+    let t: String = token.split_whitespace().collect();
     if t.is_empty() {
         return Err("빈 토큰".into());
     }
     entry()
         .map_err(|e| e.to_string())?
-        .set_password(t)
+        .set_password(&t)
         .map_err(|e| e.to_string())
 }
 
@@ -114,7 +116,7 @@ async fn fetch(token: &str) -> SessionUsage {
     // request must carry its beta header, user-agent, and system prompt or the
     // API rejects it. `max_tokens: 1` keeps the quota cost negligible.
     let body = serde_json::json!({
-        "model": "claude-3-5-haiku-20241022",
+        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 1,
         "system": "You are Claude Code, Anthropic's official CLI for Claude.",
         "messages": [{ "role": "user", "content": "quota" }],
