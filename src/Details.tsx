@@ -8,11 +8,20 @@ import { WeeklyHeatmap } from './components/Charts/WeeklyHeatmap';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { usePeers, useRemoteRoom } from './hooks/usePresence';
+import { useSessionUsage } from './hooks/useSessionUsage';
 import { useUpdater } from './hooks/useUpdater';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { ACTIVITY_BADGE, CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
 import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
+
+/** Format a rate-limit utilization value as a percent. Anthropic's units aren't
+ * documented, so accept either a 0–1 fraction or an already-0–100 number. */
+function fmtPct(v: number | null | undefined): string {
+  if (v == null) return '—';
+  const pct = v <= 1 ? v * 100 : v;
+  return `${Math.round(pct)}%`;
+}
 
 /** The Option+click / tray "settings" popup: usage summary + tunable knobs. */
 export default function Details() {
@@ -23,6 +32,8 @@ export default function Details() {
   const peers = usePeers();
   const room = useRemoteRoom(config, state);
   const [joinCode, setJoinCode] = useState('');
+  const session = useSessionUsage();
+  const [tokenInput, setTokenInput] = useState('');
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
   const patchThreshold = (k: keyof Config['thresholds'], v: number) =>
@@ -331,10 +342,78 @@ export default function Details() {
           </p>
         </div>
 
+        <div className="d-session">
+          <div className="d-session-title">
+            세션 사용량 <span className="d-exp">실험</span>
+          </div>
+          {session.hasToken ? (
+            <>
+              {session.usage?.ok ? (
+                <div className="d-session-vals">
+                  <div>
+                    <span className="d-session-k">5시간 세션</span>
+                    <span className="d-session-v">{fmtPct(session.usage.session_pct)}</span>
+                  </div>
+                  <div>
+                    <span className="d-session-k">주간</span>
+                    <span className="d-session-v">{fmtPct(session.usage.weekly_pct)}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="d-session-warn">
+                  아직 사용률을 못 읽었어요. 아래 진단을 보내주면 맞출게요:
+                  <br />
+                  <code>{session.usage?.debug ?? '…'}</code>
+                </p>
+              )}
+              <div className="d-session-actions">
+                <button className="d-btn" onClick={session.check} disabled={session.busy}>
+                  {session.busy ? '확인 중…' : '지금 확인'}
+                </button>
+                <button className="d-btn ghost" onClick={session.clearToken}>
+                  연동 해제
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="d-session-help">
+                Claude Code OAuth 토큰(<code>claude setup-token</code> →{' '}
+                <code>sk-ant-oat01…</code>)을 넣으면 5시간 세션·주간 사용률을 표시해요. 토큰은
+                macOS 키체인에 저장됩니다.
+              </p>
+              <div className="d-session-actions">
+                <input
+                  className="d-session-input"
+                  type="password"
+                  placeholder="sk-ant-oat01-…"
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                />
+                <button
+                  className="d-btn"
+                  disabled={!tokenInput.trim()}
+                  onClick={() => {
+                    session.saveToken(tokenInput.trim()).catch(() => {});
+                    setTokenInput('');
+                  }}
+                >
+                  저장
+                </button>
+              </div>
+            </>
+          )}
+          <p className="d-session-note">
+            *비공식 방식이라 언제든 바뀔 수 있고, 확인할 때마다 작은 요청을 한 번 보냅니다.
+          </p>
+        </div>
+
         <UpdateRow updater={updater} />
 
         <p className="d-foot">
-          *Claude 팀플랜 flat rate이라 실제 청구액과 무관. 활동성 지표로만 사용
+          {session.usage?.ok
+            ? '*세션/주간 값은 Claude의 사용률 한도 기준. 아래 토큰·비용은 로컬 로그 기반 추정치'
+            : '*토큰·비용은 로컬 로그 기반 추정치 (Claude 구독은 정액이라 실제 청구액과 무관)'}
         </p>
       </section>
     </div>
