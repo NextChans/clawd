@@ -79,11 +79,18 @@ function classifyLocal(usage: Usage, config: Config): StateReason {
     return { state: 'alert', reason: `rate ${r} > alert ${formatRate(high)}` };
   if (rate > mid)
     return { state: 'active', reason: `rate ${r} > active ${formatRate(mid)}` };
-  if (rate > low)
-    return { state: 'curious', reason: `rate ${r} > curious ${formatRate(low)}` };
+  // Baseline: an idle daytime cat pokes around (curious) rather than sitting in
+  // the higher-energy "playing" — usage climbing past mid/high/veryHigh steps it
+  // up to active/alert/angry from here. (`playing` is kept for the launch/greet
+  // hello, not the resting baseline.)
   return {
-    state: 'playing',
-    reason: rate > 0 ? `rate ${r} · 여유` : isNight ? '밤 · 유휴' : '낮 · 노는 중',
+    state: 'curious',
+    reason:
+      rate > low
+        ? `rate ${r} > curious ${formatRate(low)}`
+        : isNight
+          ? '밤 · 유휴'
+          : '낮 · 기웃기웃',
   };
 }
 
