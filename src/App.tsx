@@ -13,6 +13,7 @@ import { PeerCats } from './components/Peers/PeerCats';
 import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { usePeers, usePresencePublish } from './hooks/usePresence';
+import { useSessionUsage } from './hooks/useSessionUsage';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
@@ -86,7 +87,12 @@ type TtAlign = 'center' | 'left' | 'right';
 export default function App() {
   const usage = useUsage();
   const { config } = useConfig();
-  const { state, reason } = classifyWithReason(usage, config);
+  // Session-usage integration (opt-in): when live, nearing the 5-hour limit
+  // tires the cat out. `usage.ok` gates it so a failed/unconfigured probe never
+  // affects the mood.
+  const session = useSessionUsage();
+  const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
+  const { state, reason } = classifyWithReason(usage, config, sessionPct);
   // Social mode: publish our coarse status + render cats from clawd peers on
   // the LAN (empty unless opted in).
   usePresencePublish(config, state);

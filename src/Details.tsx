@@ -27,12 +27,13 @@ function fmtPct(v: number | null | undefined): string {
 export default function Details() {
   const usage = useUsage();
   const { config, save } = useConfig();
-  const { state, reason } = classifyWithReason(usage, config);
+  const session = useSessionUsage();
+  const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
+  const { state, reason } = classifyWithReason(usage, config, sessionPct);
   const updater = useUpdater();
   const peers = usePeers();
   const room = useRemoteRoom(config, state);
   const [joinCode, setJoinCode] = useState('');
-  const session = useSessionUsage();
   const [tokenInput, setTokenInput] = useState('');
 
   const patch = (p: Partial<Config>) => save({ ...config, ...p });
