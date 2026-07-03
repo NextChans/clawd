@@ -14,6 +14,7 @@ import { useUsage } from './hooks/useUsage';
 import { useConfig } from './hooks/useConfig';
 import { usePeers, usePresencePublish } from './hooks/usePresence';
 import { useSessionUsage } from './hooks/useSessionUsage';
+import { useSessionAlert } from './hooks/useSessionAlert';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
@@ -93,6 +94,8 @@ export default function App() {
   const session = useSessionUsage();
   const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
   const { state, reason } = classifyWithReason(usage, config, sessionPct, session.rising);
+  // Cat-toned native heads-up when the session/weekly budget nears its cap.
+  useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
   // the LAN (empty unless opted in).
   usePresencePublish(config, state);
@@ -275,7 +278,7 @@ export default function App() {
     const t = setTimeout(() => {
       setHint(false);
       localStorage.setItem(FIRST_RUN_KEY, '1');
-    }, 5000);
+    }, 9000);
     return () => clearTimeout(t);
   }, []);
 
@@ -691,7 +694,8 @@ export default function App() {
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.25 }}
             >
-              🐾 <b>놀기 모드</b>로 시작해요. 잡으려면 트레이 아이콘 또는 <b>⌘⇧C</b>
+              🐾 반가워냥! 트레이 아이콘에서 <b>낚시대 놀이</b>·<b>먹이 주기</b>로 놀아줘냥.
+              <b>설정</b>에서 세션 사용량 연동도 켤 수 있다냥!
             </motion.div>
           )}
         </AnimatePresence>
@@ -706,7 +710,7 @@ export default function App() {
               exit={{ opacity: 0, y: 6, scale: 0.9 }}
               transition={{ duration: 0.2 }}
             >
-              안녕! 😺
+              반가워냥! 😺
             </motion.div>
           )}
         </AnimatePresence>
