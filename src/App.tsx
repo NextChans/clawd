@@ -92,7 +92,7 @@ export default function App() {
   // affects the mood.
   const session = useSessionUsage();
   const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
-  const { state, reason } = classifyWithReason(usage, config, sessionPct);
+  const { state, reason } = classifyWithReason(usage, config, sessionPct, session.rising);
   // Social mode: publish our coarse status + render cats from clawd peers on
   // the LAN (empty unless opted in).
   usePresencePublish(config, state);
