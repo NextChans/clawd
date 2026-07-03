@@ -7,6 +7,7 @@
 
 mod presence;
 mod roam;
+mod session;
 mod tray;
 mod usage;
 
@@ -651,6 +652,10 @@ pub fn run() {
             enter_fishing,
             exit_fishing,
             report_cat_pos,
+            session::session_set_token,
+            session::session_clear_token,
+            session::session_has_token,
+            session::session_usage,
             start_drag,
             open_details,
             hide_details,
