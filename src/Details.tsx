@@ -19,8 +19,30 @@ import './details.css';
  * documented, so accept either a 0–1 fraction or an already-0–100 number. */
 function fmtPct(v: number | null | undefined): string {
   if (v == null) return '—';
-  const pct = v <= 1 ? v * 100 : v;
-  return `${Math.round(pct)}%`;
+  return `${Math.round(pctNum(v) ?? 0)}%`;
+}
+
+/** Normalize a raw utilization value (0–1 fraction or already-0–100) to 0–100. */
+function pctNum(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  return v <= 1 ? v * 100 : v;
+}
+
+/** A labelled progress gauge for a session/weekly budget. */
+function Gauge({ label, pct }: { label: string; pct: number | null }) {
+  const w = Math.max(0, Math.min(100, pct ?? 0));
+  const hot = w >= 90 ? ' hot' : w >= 70 ? ' warn' : '';
+  return (
+    <div className="d-gauge">
+      <div className="d-gauge-top">
+        <span className="d-gauge-label">{label}</span>
+        <span className="d-gauge-pct">{fmtPct(pct)}</span>
+      </div>
+      <div className="d-gauge-track">
+        <div className={`d-gauge-fill${hot}`} style={{ width: `${w}%` }} />
+      </div>
+    </div>
+  );
 }
 
 /** The Option+click / tray "settings" popup: usage summary + tunable knobs. */
@@ -98,6 +120,10 @@ export default function Details() {
     }
   };
 
+  const sPct = session.usage?.ok ? pctNum(session.usage.session_pct) : null;
+  const wPct = session.usage?.ok ? pctNum(session.usage.weekly_pct) : null;
+  const sessionLive = session.hasToken && !!session.usage?.ok;
+
   return (
     <div className="details">
       <header className="d-head">
@@ -119,6 +145,24 @@ export default function Details() {
       </header>
 
       {usage.error && <div className="d-error">⚠ {usage.error}</div>}
+
+      {/* Hero metric: session budget gauges — the "how close to my limit" view,
+          shown once the session integration is connected and reading. */}
+      {sessionLive && (
+        <section className="d-hero-session">
+          <Gauge label="5시간 세션" pct={sPct} />
+          <Gauge label="주간 한도" pct={wPct} />
+          <p className="d-session-diag">
+            {session.delta == null
+              ? '활동 감지: 측정 준비 중…'
+              : session.rising
+                ? `🟢 사용 감지됨 · 최근 +${session.delta.toFixed(2)}%p`
+                : `⚪ 최근 변화 없음 · ${
+                    session.delta >= 0 ? '+' : ''
+                  }${session.delta.toFixed(2)}%p (최근 12분)`}
+          </p>
+        </section>
+      )}
 
       <section className="d-cards">
         <Stat
@@ -151,7 +195,19 @@ export default function Details() {
         </section>
       )}
 
-      <section className="d-settings">
+      <button
+        type="button"
+        className="d-feed"
+        onClick={feed}
+        disabled={feedLeft > 0}
+        title="고양이에게 먹이를 줍니다 (60초 쿨다운)"
+      >
+        {feedLeft > 0 ? `🍚 냠냠… (${feedLeft}s)` : '🍚 먹이 주기'}
+      </button>
+
+      {/* ── 모양 ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">모양</h3>
         <div className="d-field-col">
           <span>고양이 색</span>
           <div className="d-swatches" role="radiogroup" aria-label="고양이 색">
@@ -172,7 +228,6 @@ export default function Details() {
             ))}
           </div>
         </div>
-
         <label className="d-slider d-scale">
           <span className="d-slider-label">캐릭터 크기</span>
           <input
@@ -185,22 +240,67 @@ export default function Details() {
           />
           <span className="d-slider-val">{Math.round(config.catScale * 100)}%</span>
         </label>
+      </section>
 
-        <label className="d-toggle" title="macOS 로그인 시 clawd를 자동 실행합니다">
-          <span className="d-toggle-label">로그인 시 자동 시작</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autostartOn}
-            aria-label="로그인 시 자동 시작"
-            className={autostartOn ? 'd-switch on' : 'd-switch'}
-            disabled={autostartBusy}
-            onClick={toggleAutostart}
-          >
-            <span className="d-switch-knob" />
-          </button>
-        </label>
+      {/* ── 세션 사용량 연동 (experimental) ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">
+          세션 사용량 연동 <span className="d-exp">실험</span>
+        </h3>
+        {session.hasToken ? (
+          <>
+            {!session.usage?.ok && (
+              <p className="d-session-warn">
+                아직 사용률을 못 읽었어요. 아래 진단을 보내주면 맞출게요:
+                <br />
+                <code>{session.usage?.debug ?? '…'}</code>
+              </p>
+            )}
+            <div className="d-session-actions">
+              <button className="d-btn" onClick={session.check} disabled={session.busy}>
+                {session.busy ? '확인 중…' : '지금 확인'}
+              </button>
+              <button className="d-btn ghost" onClick={session.clearToken}>
+                연동 해제
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="d-session-help">
+              Claude Code OAuth 토큰(<code>claude setup-token</code> → <code>sk-ant-oat01…</code>)을
+              넣으면 5시간 세션·주간 사용률이 맨 위에 표시되고, 사용 중일 때 고양이가 깨어 있어요.
+              토큰은 macOS 키체인에 저장됩니다.
+            </p>
+            <div className="d-session-actions">
+              <input
+                className="d-session-input"
+                type="password"
+                placeholder="sk-ant-oat01-…"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+              />
+              <button
+                className="d-btn"
+                disabled={!tokenInput.trim()}
+                onClick={() => {
+                  session.saveToken(tokenInput.trim()).catch(() => {});
+                  setTokenInput('');
+                }}
+              >
+                저장
+              </button>
+            </div>
+          </>
+        )}
+        <p className="d-session-note">
+          *비공식 방식이라 언제든 바뀔 수 있고, 확인할 때마다 작은 요청을 한 번 보냅니다.
+        </p>
+      </section>
 
+      {/* ── 친구 (네트워크 / 원격 방) ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">친구</h3>
         <label
           className="d-toggle"
           title="같은 네트워크(Wi-Fi)의 다른 clawd 고양이를 화면에 초대하고, 서로의 대략적 활동 현황을 봅니다"
@@ -321,19 +421,14 @@ export default function Details() {
             </>
           )}
         </div>
+      </section>
 
-        <button
-          type="button"
-          className="d-feed"
-          onClick={feed}
-          disabled={feedLeft > 0}
-          title="고양이에게 먹이를 줍니다 (60초 쿨다운)"
-        >
-          {feedLeft > 0 ? `🍚 냠냠… (${feedLeft}s)` : '🍚 먹이 주기'}
-        </button>
-
+      {/* ── 상태 임계값 (advanced) ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">
+          상태 임계값 <span className="d-group-sub">tokens/min</span>
+        </h3>
         <div className="d-thresholds">
-          <div className="d-thresholds-title">상태 임계값 (tokens/min)</div>
           <Slider label="curious ▸" value={config.thresholds.low} max={50_000} onChange={(v) => patchThreshold('low', v)} />
           <Slider label="active ▸" value={config.thresholds.mid} max={150_000} onChange={(v) => patchThreshold('mid', v)} />
           <Slider label="alert ▸" value={config.thresholds.high} max={400_000} onChange={(v) => patchThreshold('high', v)} />
@@ -342,95 +437,33 @@ export default function Details() {
             *Exhausted는 최근 30분간 rate가 alert 임계 이상으로 지속되면 자동 진입
           </p>
         </div>
-
-        <div className="d-session">
-          <div className="d-session-title">
-            세션 사용량 <span className="d-exp">실험</span>
-          </div>
-          {session.hasToken ? (
-            <>
-              {session.usage?.ok ? (
-                <>
-                  <div className="d-session-vals">
-                    <div>
-                      <span className="d-session-k">5시간 세션</span>
-                      <span className="d-session-v">{fmtPct(session.usage.session_pct)}</span>
-                    </div>
-                    <div>
-                      <span className="d-session-k">주간</span>
-                      <span className="d-session-v">{fmtPct(session.usage.weekly_pct)}</span>
-                    </div>
-                  </div>
-                  {/* Activity diagnostic: is the session % actually climbing?
-                      This is the signal that wakes the cat, so surfacing it makes
-                      "why is it asleep" legible and lets us calibrate. */}
-                  <p className="d-session-diag">
-                    {session.delta == null
-                      ? '활동 감지: 측정 준비 중… (몇 분 필요)'
-                      : session.rising
-                        ? `🟢 사용 감지됨 · 최근 +${session.delta.toFixed(2)}%p`
-                        : `⚪ 최근 변화 없음 · ${
-                            session.delta >= 0 ? '+' : ''
-                          }${session.delta.toFixed(2)}%p (최근 12분)`}
-                  </p>
-                </>
-              ) : (
-                <p className="d-session-warn">
-                  아직 사용률을 못 읽었어요. 아래 진단을 보내주면 맞출게요:
-                  <br />
-                  <code>{session.usage?.debug ?? '…'}</code>
-                </p>
-              )}
-              <div className="d-session-actions">
-                <button className="d-btn" onClick={session.check} disabled={session.busy}>
-                  {session.busy ? '확인 중…' : '지금 확인'}
-                </button>
-                <button className="d-btn ghost" onClick={session.clearToken}>
-                  연동 해제
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="d-session-help">
-                Claude Code OAuth 토큰(<code>claude setup-token</code> →{' '}
-                <code>sk-ant-oat01…</code>)을 넣으면 5시간 세션·주간 사용률을 표시해요. 토큰은
-                macOS 키체인에 저장됩니다.
-              </p>
-              <div className="d-session-actions">
-                <input
-                  className="d-session-input"
-                  type="password"
-                  placeholder="sk-ant-oat01-…"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                />
-                <button
-                  className="d-btn"
-                  disabled={!tokenInput.trim()}
-                  onClick={() => {
-                    session.saveToken(tokenInput.trim()).catch(() => {});
-                    setTokenInput('');
-                  }}
-                >
-                  저장
-                </button>
-              </div>
-            </>
-          )}
-          <p className="d-session-note">
-            *비공식 방식이라 언제든 바뀔 수 있고, 확인할 때마다 작은 요청을 한 번 보냅니다.
-          </p>
-        </div>
-
-        <UpdateRow updater={updater} />
-
-        <p className="d-foot">
-          {session.usage?.ok
-            ? '*세션/주간 값은 Claude의 사용률 한도 기준. 아래 토큰·비용은 로컬 로그 기반 추정치'
-            : '*토큰·비용은 로컬 로그 기반 추정치 (Claude 구독은 정액이라 실제 청구액과 무관)'}
-        </p>
       </section>
+
+      {/* ── 시스템 ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">시스템</h3>
+        <label className="d-toggle" title="macOS 로그인 시 clawd를 자동 실행합니다">
+          <span className="d-toggle-label">로그인 시 자동 시작</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autostartOn}
+            aria-label="로그인 시 자동 시작"
+            className={autostartOn ? 'd-switch on' : 'd-switch'}
+            disabled={autostartBusy}
+            onClick={toggleAutostart}
+          >
+            <span className="d-switch-knob" />
+          </button>
+        </label>
+        <UpdateRow updater={updater} />
+      </section>
+
+      <p className="d-foot">
+        {session.usage?.ok
+          ? '*세션/주간 값은 Claude의 사용률 한도 기준. 토큰·비용은 로컬 로그 기반 추정치'
+          : '*토큰·비용은 로컬 로그 기반 추정치 (Claude 구독은 정액이라 실제 청구액과 무관)'}
+      </p>
     </div>
   );
 }
