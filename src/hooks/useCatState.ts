@@ -31,27 +31,41 @@ function isSustainedHighRate(usage: Usage, high: number): boolean {
   return highCount >= Math.ceil(SUSTAINED_SAMPLES * SUSTAINED_RATIO);
 }
 
-/** At/above this session-window utilization the cat reads as worn out — you're
- * close to the 5-hour limit, so it winds down regardless of the current rate. */
-const SESSION_TIRED_PCT = 90;
+/** Intensity order, calm → intense, so we can pick the "more intense" of the
+ * activity-based and session-based moods. */
+const SEVERITY: Record<CatState, number> = {
+  sleeping: 0,
+  playing: 1,
+  curious: 2,
+  active: 3,
+  alert: 4,
+  angry: 5,
+  exhausted: 6,
+};
 
 /**
- * Map a usage snapshot onto one of the cat's moods **and** report which rule
- * fired. Thresholds come from config so they stay tunable.
- *
- * Mood is driven by **activity**, not money — on a Claude Team flat-rate plan
- * there is no per-token bill to model. `rate` (tokens/min over the trailing 5
- * minutes) picks the mood, and `exhausted` layers on when that rate stays
- * at/above the alert threshold for a sustained ~30-minute stretch. When the
- * optional session-usage integration is on, nearing the 5-hour session limit
- * (`sessionPct`) also tires the cat out — a real "you're about to be
- * rate-limited, wind down" signal that outranks the activity-based moods.
+ * Session-window utilization (0–100) → mood band. The 5-hour budget reads like
+ * an energy gauge: a fresh window is playful, and the cat winds up — busier,
+ * then stressed, then worn out — as the budget is consumed. Used when the
+ * opt-in session-usage integration is live, which is also the only signal that
+ * reflects claude.ai **web** usage (the local logs only see the CLI).
  */
-export function classifyWithReason(
-  usage: Usage,
-  config: Config,
-  sessionPct?: number | null,
-): StateReason {
+function sessionMood(pct: number): CatState {
+  if (pct >= 90) return 'exhausted';
+  if (pct >= 75) return 'angry';
+  if (pct >= 55) return 'alert';
+  if (pct >= 35) return 'active';
+  if (pct >= 15) return 'curious';
+  return 'playing';
+}
+
+/**
+ * Activity-based mood from the local `~/.claude` logs. `rate` (tokens/min over
+ * the trailing 5 minutes) picks the mood, `exhausted` layers on for a sustained
+ * ~30-minute high stretch, and long idleness sleeps. On a Claude Team flat-rate
+ * plan there's no per-token bill, so this is all about activity, not money.
+ */
+function classifyLocal(usage: Usage, config: Config): StateReason {
   const rate = usage.rate_per_min;
   const { low, mid, high, veryHigh } = config.thresholds;
   const active = usage.session_active;
@@ -65,14 +79,6 @@ export function classifyWithReason(
 
   if (!active && usage.idle_minutes > sleepIdle)
     return { state: 'sleeping', reason: `비활성 · 마지막 활동 ${Math.round(usage.idle_minutes)}분 전` };
-
-  // Near the 5-hour session limit → worn out, whatever the current rate. Values
-  // may arrive as a 0–1 fraction or an already-0–100 number.
-  if (sessionPct != null) {
-    const pct = sessionPct <= 1 ? sessionPct * 100 : sessionPct;
-    if (pct >= SESSION_TIRED_PCT)
-      return { state: 'exhausted', reason: `세션 한도 임박 (${Math.round(pct)}%)` };
-  }
   if (isSustainedHighRate(usage, high) && rate >= high)
     return {
       state: 'exhausted',
@@ -87,6 +93,30 @@ export function classifyWithReason(
   if (rate > low)
     return { state: 'curious', reason: `rate ${r} > curious ${formatRate(low)}` };
   return { state: 'playing', reason: rate > 0 ? `rate ${r} · 여유` : '유휴 · 활동 없음' };
+}
+
+/**
+ * Map a usage snapshot onto one of the cat's moods **and** report which rule
+ * fired. Combines the local-activity mood with the (optional) session-usage
+ * mood by taking whichever is **more intense** — so a CLI burst still livens the
+ * cat up, while web usage (invisible to the local logs) is reflected via the
+ * session %, and the cat no longer just sleeps whenever the CLI is idle.
+ */
+export function classifyWithReason(
+  usage: Usage,
+  config: Config,
+  sessionPct?: number | null,
+): StateReason {
+  const local = classifyLocal(usage, config);
+  if (sessionPct == null) return local;
+
+  // Values may arrive as a 0–1 fraction or an already-0–100 number.
+  const pct = sessionPct <= 1 ? sessionPct * 100 : sessionPct;
+  const fromSession: StateReason = {
+    state: sessionMood(pct),
+    reason: `세션 사용량 ${Math.round(pct)}%`,
+  };
+  return SEVERITY[fromSession.state] >= SEVERITY[local.state] ? fromSession : local;
 }
 
 /** Just the mood — thin wrapper over {@link classifyWithReason}. */
