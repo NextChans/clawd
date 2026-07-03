@@ -672,13 +672,24 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
             (px + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_x),
             (py + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_y),
         )
+    } else if rng.unit() < 0.2 {
+        // Every so often, trot to a fresh spot anywhere in the work area, so the
+        // cat roams the whole width instead of lingering near where it started
+        // (the default top-right corner) — a plain relative walk drifts across a
+        // wide screen only very slowly.
+        (
+            rng.range(WANDER_MARGIN, max_x),
+            rng.range(WANDER_MARGIN, max_y),
+        )
     } else {
-        let base = w_log.min(h_log);
-        let dist = rng.range(p.dist.0, p.dist.1) * base;
+        // Local mosey. Scale the step per axis (width for x, height for y) so
+        // hops cover a wide screen horizontally instead of being capped by the
+        // shorter (usually vertical) dimension.
+        let dist = rng.range(p.dist.0, p.dist.1);
         let angle = rng.range(0.0, std::f64::consts::TAU);
         (
-            (px + angle.cos() * dist).clamp(WANDER_MARGIN, max_x),
-            (py + angle.sin() * dist).clamp(WANDER_MARGIN, max_y),
+            (px + angle.cos() * dist * w_log).clamp(WANDER_MARGIN, max_x),
+            (py + angle.sin() * dist * h_log).clamp(WANDER_MARGIN, max_y),
         )
     };
 
