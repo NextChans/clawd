@@ -31,17 +31,29 @@ function isSustainedHighRate(usage: Usage, high: number): boolean {
   return highCount >= Math.ceil(SUSTAINED_SAMPLES * SUSTAINED_RATIO);
 }
 
+/** Intensity order, calm → intense, so we can pick the "more intense" of the
+ * activity-based and session-based moods. */
+const SEVERITY: Record<CatState, number> = {
+  sleeping: 0,
+  playing: 1,
+  curious: 2,
+  active: 3,
+  alert: 4,
+  angry: 5,
+  exhausted: 6,
+};
+
+/** At/above this session-window utilization the cat reads as worn out —
+ * you're near the 5-hour cap, so it winds down whatever you're doing. */
+const SESSION_TIRED_PCT = 90;
+
 /**
- * Map a usage snapshot onto one of the cat's moods **and** report which rule
- * fired. Thresholds come from config so they stay tunable.
- *
- * Everything is driven by **activity**, not money — the user is on a Claude
- * Team flat-rate plan, so there is no per-token bill to model. `rate` is
- * tokens/min over the trailing 5 minutes and picks the mood; `exhausted` layers
- * on top when that rate has stayed at/above the alert threshold for a sustained
- * ~30-minute stretch, so a long marathon session eventually tires the cat out.
+ * Activity-based mood from the local `~/.claude` logs. `rate` (tokens/min over
+ * the trailing 5 minutes) picks the mood, `exhausted` layers on for a sustained
+ * ~30-minute high stretch, and long idleness sleeps. On a Claude Team flat-rate
+ * plan there's no per-token bill, so this is all about activity, not money.
  */
-export function classifyWithReason(usage: Usage, config: Config): StateReason {
+function classifyLocal(usage: Usage, config: Config): StateReason {
   const rate = usage.rate_per_min;
   const { low, mid, high, veryHigh } = config.thresholds;
   const active = usage.session_active;
@@ -69,6 +81,49 @@ export function classifyWithReason(usage: Usage, config: Config): StateReason {
   if (rate > low)
     return { state: 'curious', reason: `rate ${r} > curious ${formatRate(low)}` };
   return { state: 'playing', reason: rate > 0 ? `rate ${r} · 여유` : '유휴 · 활동 없음' };
+}
+
+/**
+ * Map a usage snapshot onto one of the cat's moods **and** report which rule
+ * fired. When the session-usage integration is live it adds two things the
+ * local logs can't give on their own:
+ *
+ *  - **`sessionRising`** — the session % has climbed recently, i.e. you're
+ *    using Claude *right now* (including on the web, which the CLI logs never
+ *    see). This is the honest "actively using" signal: the absolute % alone
+ *    can't tell a busy window from a high-but-idle one. When it's set and the
+ *    CLI looks calmer, the cat perks up to `active`.
+ *  - **`sessionPct`** — the accumulated 5-hour usage, used only for the
+ *    near-the-cap → worn out signal (not as a liveliness gauge).
+ *
+ * Otherwise the local-activity mood stands, so an idle machine still naps even
+ * at a high accumulated %.
+ */
+export function classifyWithReason(
+  usage: Usage,
+  config: Config,
+  sessionPct?: number | null,
+  sessionRising?: boolean,
+): StateReason {
+  const local = classifyLocal(usage, config);
+  if (sessionPct == null) return local;
+
+  // Values may arrive as a 0–1 fraction or an already-0–100 number.
+  const pct = sessionPct <= 1 ? sessionPct * 100 : sessionPct;
+
+  // Near the 5-hour cap → worn out regardless of current activity.
+  if (pct >= SESSION_TIRED_PCT)
+    return { state: 'exhausted', reason: `세션 한도 임박 (${Math.round(pct)}%)` };
+
+  // Actively using Claude now (session climbing) — keep the cat lively even if
+  // the CLI is quiet (e.g. you're on claude.ai). Never downgrade a busier
+  // CLI-driven mood.
+  if (sessionRising) {
+    const web: StateReason = { state: 'active', reason: `Claude 사용 중 · 세션 ${Math.round(pct)}%` };
+    return SEVERITY[local.state] >= SEVERITY[web.state] ? local : web;
+  }
+
+  return local;
 }
 
 /** Just the mood — thin wrapper over {@link classifyWithReason}. */
