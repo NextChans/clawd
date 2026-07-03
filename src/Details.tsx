@@ -294,22 +294,23 @@ export default function Details() {
           </button>
         </label>
 
-        {config.networkEnabled && (
-          <label className="d-field-col d-nick">
-            <span>닉네임 (친구 화면에 표시)</span>
-            <input
-              type="text"
-              className="d-nick-input"
-              maxLength={16}
-              placeholder="예: 채니"
-              value={config.nickname}
-              onChange={(e) => patch({ nickname: e.target.value })}
-            />
-            <span className="d-nick-note">
-              공유: 닉네임 · 색 · 기분 · 대략적 활동량뿐. 토큰 수·비용·프로젝트명은 공유하지 않아요.
-            </span>
-          </label>
-        )}
+        {/* Nickname is used by *both* LAN presence and remote rooms, so it's
+            always editable — not gated behind the LAN toggle. Empty → a
+            generated "cat-1234" name. */}
+        <label className="d-field-col d-nick">
+          <span>닉네임 (친구 화면에 표시)</span>
+          <input
+            type="text"
+            className="d-nick-input"
+            maxLength={16}
+            placeholder="예: 채니"
+            value={config.nickname}
+            onChange={(e) => patch({ nickname: e.target.value })}
+          />
+          <span className="d-nick-note">
+            공유: 닉네임 · 색 · 기분 · 대략적 활동량뿐. 토큰 수·비용·프로젝트명은 공유하지 않아요.
+          </span>
+        </label>
 
         {config.networkEnabled && (
           <div className="d-peers">
