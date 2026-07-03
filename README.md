@@ -431,6 +431,13 @@ clawd/
 
 ## Changelog
 
+- **v0.11.5** — **Fix remote rooms never getting a relay.** iroh 0.11's built-in
+  default relays point at n0's old `*.relay.n0.iroh.iroh.link` hostnames, whose
+  TLS cert no longer matches (n0 moved to `*.relay.n0.iroh.link`) — so the relay
+  handshake failed, the endpoint never got a home relay, and **cross-network
+  rooms sat stuck on 🟡 "릴레이 없음"** (LAN rooms were unaffected). clawd now
+  ships the corrected n0 relay map itself, so remote rooms link up out of the
+  box again — no custom relay needed (#38).
 - **v0.11.4** — **Custom relay for stubborn networks.** Remote rooms can now
   point at a **self-hosted iroh relay** (상세 · 설정 → 원격 방 → 고급) so rooms
   link up on networks that block n0's public relays — the "🟡 릴레이 없음" case.
