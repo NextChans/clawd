@@ -129,12 +129,15 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gaitTimer = useRef<number | null>(null);
   const flyRef = useRef<HTMLDivElement>(null);
-  // Fishing (teaser) play: the lure follows the cursor and the cat eases after
-  // it in a rAF loop. `lureRef` is the live cursor position (window px); the
-  // rod string + lure feather are moved imperatively each frame via these refs.
-  const lureRef = useRef({ x: 0, y: 0 });
+  // Fishing (teaser) play. The cursor is the *rod tip*; the feather hangs from
+  // it on a string and trails/swings with spring physics, and the cat chases
+  // the swinging feather. All moved imperatively each frame via these refs.
+  const tipRef = useRef({ x: 0, y: 0 }); // rod tip = cursor
+  const featherRef = useRef({ x: 0, y: 0 }); // dangling lure (lags the tip)
+  const featherVelRef = useRef({ x: 0, y: 0 });
   const lureElRef = useRef<HTMLDivElement>(null);
-  const rodLineRef = useRef<SVGLineElement>(null);
+  const rodStickRef = useRef<SVGLineElement>(null); // handle → tip
+  const stringLineRef = useRef<SVGLineElement>(null); // tip → feather
   const fishRaf = useRef<number | null>(null);
   const lastPounce = useRef(0);
   // The cat's current position within the window, mirrored for peer cats so a
@@ -392,14 +395,19 @@ export default function App() {
   // with per-frame state (only direction/gait/pounce flips, which are rare).
   useEffect(() => {
     if (!fishing) return;
-    // Start the lure near the cat so it doesn't snap across the screen.
-    lureRef.current = {
-      x: catXRef.current + CAT_SIZE / 2,
-      y: catYRef.current + CAT_SIZE * 0.28,
-    };
+    // The string's rest length: the feather hangs this far below the rod tip.
+    const STRING_LEN = 52;
+    // Damped-spring constants for the trailing feather (tuned to swing, settle).
+    const SPRING = 0.16;
+    const DAMP = 0.8;
+
+    // Start the tip near the cat and the feather hanging under it (no snap).
+    tipRef.current = { x: catXRef.current + CAT_SIZE / 2, y: catYRef.current - 8 };
+    featherRef.current = { x: tipRef.current.x, y: tipRef.current.y + STRING_LEN };
+    featherVelRef.current = { x: 0, y: 0 };
 
     const onMove = (e: PointerEvent) => {
-      lureRef.current = { x: e.clientX, y: e.clientY };
+      tipRef.current = { x: e.clientX, y: e.clientY };
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') exitFishing();
@@ -414,18 +422,25 @@ export default function App() {
     let lastGait: Gait = 'idle';
 
     const step = () => {
-      const L = lureRef.current;
-      // Center the cat under the lure, body a little below so it reaches *up*
-      // at the dangling feather.
-      const tx = L.x - CAT_SIZE / 2;
-      const ty = L.y - CAT_SIZE * 0.28;
+      const T = tipRef.current;
+      // Feather hangs from the tip on a string: a damped spring toward the rest
+      // point (straight below the tip) makes it trail and swing as the tip
+      // moves, then settle when it stops — like a real teaser wand.
+      const F = featherRef.current;
+      const V = featherVelRef.current;
+      V.x = (V.x + (T.x - F.x) * SPRING) * DAMP;
+      V.y = (V.y + (T.y + STRING_LEN - F.y) * SPRING) * DAMP;
+      F.x += V.x;
+      F.y += V.y;
+
+      // The cat chases the *feather* (not the cursor); sit just below it so it
+      // reaches up at the dangling lure.
+      const tx = F.x - CAT_SIZE / 2;
+      const ty = F.y - CAT_SIZE * 0.28;
       const dx = tx - catXRef.current;
       const dy = ty - catYRef.current;
-      // Ease toward the target — a trailing chase, not a rigid lock.
-      const nx = catXRef.current + dx * 0.14;
-      const ny = catYRef.current + dy * 0.14;
-      catXRef.current = Math.max(0, Math.min(window.innerWidth - CAT_SIZE, nx));
-      catYRef.current = Math.max(0, Math.min(window.innerHeight - CAT_SIZE, ny));
+      catXRef.current = Math.max(0, Math.min(window.innerWidth - CAT_SIZE, catXRef.current + dx * 0.14));
+      catYRef.current = Math.max(0, Math.min(window.innerHeight - CAT_SIZE, catYRef.current + dy * 0.14));
       if (el) {
         el.style.transform = `translate3d(${catXRef.current}px, ${catYRef.current}px, 0)`;
       }
@@ -441,7 +456,7 @@ export default function App() {
         lastGait = g;
         setGait(g);
       }
-      // Bat at the lure once the cat has caught up, on a short cooldown.
+      // Bat at the feather once the cat has caught up, on a short cooldown.
       if (dist < 30) {
         const now = performance.now();
         if (now - lastPounce.current > 850) {
@@ -451,12 +466,22 @@ export default function App() {
         }
       }
 
-      // Move the string end + lure feather to the cursor.
-      rodLineRef.current?.setAttribute('x2', String(L.x));
-      rodLineRef.current?.setAttribute('y2', String(L.y));
+      // Draw the rod (a stick held up-and-right of the tip) and the string
+      // (tip → feather), and hang the feather at the string's end, tilted into
+      // its swing so it never looks detached.
+      rodStickRef.current?.setAttribute('x1', String(T.x + 58));
+      rodStickRef.current?.setAttribute('y1', String(T.y - 44));
+      rodStickRef.current?.setAttribute('x2', String(T.x));
+      rodStickRef.current?.setAttribute('y2', String(T.y));
+      stringLineRef.current?.setAttribute('x1', String(T.x));
+      stringLineRef.current?.setAttribute('y1', String(T.y));
+      stringLineRef.current?.setAttribute('x2', String(F.x));
+      stringLineRef.current?.setAttribute('y2', String(F.y));
       if (lureElRef.current) {
-        // The feather's tie-on point is (22, 3) within its own 44×48 box.
-        lureElRef.current.style.transform = `translate3d(${L.x - 22}px, ${L.y - 3}px, 0)`;
+        // Tie-on point is (22, 3) within the feather's own 44×48 box; tilt it
+        // into its horizontal swing for a natural dangle.
+        const tilt = Math.max(-32, Math.min(32, V.x * 3.5));
+        lureElRef.current.style.transform = `translate3d(${F.x - 22}px, ${F.y - 3}px, 0) rotate(${tilt}deg)`;
       }
 
       fishRaf.current = requestAnimationFrame(step);
@@ -751,22 +776,33 @@ export default function App() {
       {fishing && (
         <div className="fishing-layer" aria-hidden>
           <svg className="fishing-string" width="100%" height="100%">
+            {/* Rod stick (handle → tip) and the string (tip → feather). Both are
+                positioned every frame by the rAF loop. */}
             <line
-              ref={rodLineRef}
-              x1={window.innerWidth - 36}
-              y1={20}
-              x2={window.innerWidth - 36}
-              y2={20}
-              stroke="rgba(90,75,60,0.7)"
-              strokeWidth={1.6}
+              ref={rodStickRef}
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={0}
+              stroke="#7c5a34"
+              strokeWidth={4}
+              strokeLinecap="round"
+            />
+            <line
+              ref={stringLineRef}
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={0}
+              stroke="rgba(90,75,60,0.6)"
+              strokeWidth={1.4}
             />
           </svg>
-          <div className="rod-handle" />
           <div className="lure" ref={lureElRef}>
             <FishingRod />
           </div>
           <div className="fishing-hint">
-            🎣 마우스를 움직여 고양이랑 놀아주세요 · <b>Esc</b>로 종료
+            🎣 마우스로 낚싯대를 움직여 고양이랑 놀아주세요 · <b>Esc</b>로 종료
           </div>
         </div>
       )}
