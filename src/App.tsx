@@ -62,6 +62,15 @@ interface Plaything extends PlaythingEvent {
   id: number;
 }
 
+/** Rust's `cat-furniture` payload: a prop fades in and the cat visits it. */
+interface FurnitureEvent {
+  kind: FurnitureKind;
+  /** Cat's travel time (ms) — pounce on arrival. */
+  arrive_ms: number;
+  /** Total time the prop stays visible (ms). */
+  duration_ms: number;
+}
+
 /** How long the "just ate" reaction (temp sit + bowl linger) lasts. */
 const FEED_REACT_MS = 5000;
 
@@ -120,6 +129,8 @@ export default function App() {
   // Plaything the cat is reacting to, and a transient pounce on the catch.
   const [plaything, setPlaything] = useState<Plaything | null>(null);
   const [pounce, setPounce] = useState(false);
+  // A piece of furniture the cat is currently visiting (fades in for the visit).
+  const [furnitureVisit, setFurnitureVisit] = useState<FurnitureKind | null>(null);
   // Brief "spooked" beat when a plaything first appears (drives the startled pose).
   const [startled, setStartled] = useState(false);
   // Grab-mode petting: mouse held down on the cat → purr.
@@ -314,6 +325,28 @@ export default function App() {
       setPlaything({ ...e.payload, id: seq });
     });
     return () => {
+      un.then((off) => off());
+    };
+  }, []);
+
+  // Furniture visit: a prop fades in and the cat trots over (via a parallel
+  // `cat-wander`) to play at it. Pounce on arrival, then fade the prop out.
+  useEffect(() => {
+    const timers: number[] = [];
+    const un = listen<FurnitureEvent>('cat-furniture', (e) => {
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+      setFurnitureVisit(e.payload.kind);
+      timers.push(
+        window.setTimeout(() => {
+          setPounce(true);
+          window.setTimeout(() => setPounce(false), 420);
+        }, Math.max(0, e.payload.arrive_ms)),
+      );
+      timers.push(window.setTimeout(() => setFurnitureVisit(null), e.payload.duration_ms));
+    });
+    return () => {
+      timers.forEach(clearTimeout);
       un.then((off) => off());
     };
   }, []);
@@ -590,6 +623,8 @@ export default function App() {
   if (state === 'sleeping') visibleFurniture.add('cushion');
   if (state === 'alert' || state === 'angry') visibleFurniture.add('tower');
   if (state === 'exhausted' || fed) visibleFurniture.add('bowl');
+  // A playful-mood furniture visit shows its prop transiently too.
+  if (furnitureVisit) visibleFurniture.add(furnitureVisit);
 
   // FX layer classes — a flourish/interaction stack on the `.cat-fx` wrapper.
   // When an expressive pose is in play (`usePose`) the pose *is* the flourish,

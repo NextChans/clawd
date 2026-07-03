@@ -18,7 +18,10 @@ use std::time::{Duration, Instant};
 use chrono::{Local, Timelike};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{AppState, PlaythingEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD, WANDER_MARGIN};
+use crate::{
+    AppState, FurnitureEvent, PlaythingEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD,
+    WANDER_MARGIN,
+};
 
 /// Poll cadence. We only schedule hops (not animate), so a lazy tick is plenty.
 const TICK_MS: u64 = 200;
@@ -32,6 +35,13 @@ const SUB_EVENT_S: (f64, f64) = (15.0, 60.0);
 /// Plaything appearances (butterfly / ball / yarn / bird) fire this often
 /// (seconds, range) in the playful moods; time-of-day scales it.
 const PLAYTHING_S: (f64, f64) = (60.0, 180.0);
+
+/// Furniture "visits" (the cat trots to a prop that fades in and plays there)
+/// fire this often (seconds, range) in the playful moods — staggered from and a
+/// bit rarer than playthings so the two don't pile up.
+const FURNITURE_S: (f64, f64) = (100.0, 240.0);
+/// How long the cat lingers/plays at a visited prop before it fades out (s).
+const FURN_LINGER_S: (f64, f64) = (3.5, 6.5);
 
 /// Grace before the first hop, and after returning from Grab mode, so the cat
 /// doesn't lurch the instant it's placed or released.
@@ -230,6 +240,8 @@ struct Sched {
     next_sub: Option<Instant>,
     /// When the next plaything (butterfly / ball / yarn / bird) may appear.
     next_plaything: Option<Instant>,
+    /// When the next furniture visit (tower / cushion / bowl) may appear.
+    next_furniture: Option<Instant>,
 }
 
 /// Launch the wander loop. Cheap when idle or grabbed.
@@ -241,6 +253,9 @@ pub fn spawn(app: AppHandle) {
             next_sub: None,
             // Don't pester the user with a plaything the instant the app opens.
             next_plaything: Some(Instant::now() + Duration::from_secs(45)),
+            // Stagger the first furniture visit so it doesn't coincide with the
+            // first plaything.
+            next_furniture: Some(Instant::now() + Duration::from_secs(85)),
         };
 
         loop {
@@ -599,6 +614,56 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
         }
 
         sched.next_plaything = Some(now + Duration::from_secs_f64(plaything_interval(rng, tod)));
+        return;
+    }
+
+    // Playful moods also occasionally send the cat over to a piece of furniture
+    // that fades in for the visit — a static prop it trots to and plays at (the
+    // frontend pounces on arrival, then fades the prop out). Adds life to free
+    // roam beyond the mood-anchored furniture.
+    if matches!(cat_state.as_str(), "playing" | "curious" | "active")
+        && sched.next_furniture.map_or(false, |t| now >= t)
+    {
+        // Weighted pick — the cat tower (climbing) is the fun one; fractions
+        // match `FURNITURE_X` on the frontend so the cat lands on the prop.
+        let (kind, frac, lifted) = match rng.weighted(&[5.0, 3.0, 2.0]) {
+            0 => ("tower", 0.20, true),
+            1 => ("cushion", 0.88, false),
+            _ => ("bowl", 0.80, false),
+        };
+        let ground_y = h_log - CAT_SIZE - FURN_GROUND;
+        let fx = (frac * w_log - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
+        let fy = (if lifted { ground_y - TOWER_LIFT } else { ground_y })
+            .clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+        let dist = ((fx - px).powi(2) + (fy - py).powi(2)).sqrt();
+        let travel = ((dist / 190.0) * 1000.0).clamp(500.0, 4500.0) as u64;
+        let linger = (rng.range(FURN_LINGER_S.0, FURN_LINGER_S.1) * 1000.0) as u64;
+        let total = travel + linger;
+
+        let _ = app.emit(
+            "cat-furniture",
+            FurnitureEvent {
+                kind: kind.to_string(),
+                arrive_ms: travel,
+                duration_ms: total,
+            },
+        );
+        let direction = if fx < px { "left" } else { "right" };
+        let _ = app.emit(
+            "cat-wander",
+            WanderEvent {
+                x: fx,
+                y: fy,
+                duration_ms: travel,
+                direction: direction.to_string(),
+                gait: "walk".to_string(),
+            },
+        );
+        state.set_cat_pos(fx, fy);
+        sched.next_hop =
+            Some(now + Duration::from_millis(total) + Duration::from_secs_f64(rng.range(1.5, 3.0)));
+        sched.next_furniture =
+            Some(now + Duration::from_secs_f64(rng.range(FURNITURE_S.0, FURNITURE_S.1)));
         return;
     }
 
