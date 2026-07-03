@@ -311,9 +311,31 @@ type OnStatus = Arc<dyn Fn(bool, usize) + Send + Sync>;
 /// relay) so a stuck room can be debugged from the UI.
 type OnDebug = Arc<dyn Fn(String) + Send + Sync>;
 
+/// n0's public relays, addressed by their **current** hostnames.
+///
+/// We can't use iroh 0.91.2's built-in `RelayMode::Default`: its baked-in relay
+/// URLs still point at the old `*.relay.n0.iroh.iroh.link` names (note the
+/// doubled `iroh`), but n0 has since moved the relays to `*.relay.n0.iroh.link`
+/// and the TLS cert only covers the new names. So the default relays fail
+/// hostname verification, the endpoint never gets a home relay, and
+/// cross-network rooms sit stuck on 🟡 "릴레이 없음" forever (LAN rooms are fine
+/// — they don't need a relay). Verified in the field: `openssl s_client` to the
+/// doubled name returns a cert for the single-`iroh` name. Shipping the
+/// corrected map ourselves fixes it without waiting on an iroh bump.
+fn n0_relay_map() -> RelayMap {
+    [
+        "https://use1-1.relay.n0.iroh.link", // North America
+        "https://euc1-1.relay.n0.iroh.link", // Europe
+        "https://aps1-1.relay.n0.iroh.link", // Asia-Pacific
+    ]
+    .into_iter()
+    .filter_map(|s| s.parse::<RelayUrl>().ok())
+    .collect()
+}
+
 /// Build the relay configuration for the endpoint. A user-supplied **custom
 /// relay** (e.g. a self-hosted `iroh-relay`) takes over when set and parseable,
-/// otherwise we use n0's default public relays.
+/// otherwise we use n0's public relays ({@link n0_relay_map}).
 ///
 /// A custom relay *replaces* the defaults rather than adding to them: a
 /// self-hosted relay doesn't mesh with n0's, so for two peers to route through
@@ -329,7 +351,7 @@ fn relay_mode_from(relay_url: Option<&str>) -> RelayMode {
         .and_then(|s| s.parse::<RelayUrl>().ok())
     {
         Some(url) => RelayMode::Custom(RelayMap::from(url)),
-        None => RelayMode::Default,
+        None => RelayMode::Custom(n0_relay_map()),
     }
 }
 
