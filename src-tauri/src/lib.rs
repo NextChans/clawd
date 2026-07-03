@@ -458,13 +458,13 @@ pub(crate) fn cursor_workarea(app: &AppHandle) -> Option<WorkArea> {
     Some(WorkArea::from_monitor(&monitor))
 }
 
-/// Default resting spot: top-right corner of the work area, inset by the margin.
+/// Default resting spot: near the top, right-of-center (~60% width) rather than
+/// jammed in the corner — so the cat isn't cramped against the edge and its
+/// greeting/onboarding bubbles have room to sit without clipping off-screen.
 pub(crate) fn default_cat_pos(wa: &WorkArea) -> (f64, f64) {
     let (w, _) = wa.logical_size();
-    (
-        (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN),
-        WANDER_MARGIN,
-    )
+    let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+    (((w - CAT_SIZE) * 0.6).clamp(WANDER_MARGIN, max_x), WANDER_MARGIN)
 }
 
 /// Blow the window up to cover the whole work area (Roam overlay).
