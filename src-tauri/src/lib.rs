@@ -253,7 +253,16 @@ fn hide_details(app: AppHandle) {
 /// bowl (Roam only) and broadcast `feed-cat` so the frontend can sparkle the
 /// bowl and show the "just ate" reaction.
 #[tauri::command]
-fn feed_cat(app: AppHandle, state: tauri::State<'_, AppState>) -> bool {
+fn feed_cat(app: AppHandle) -> bool {
+    do_feed(&app)
+}
+
+/// Core feed action, shared by the `feed_cat` command (details window) and the
+/// tray menu. Rate-limited to once per [`FEED_COOLDOWN`]; returns `false` (a
+/// no-op) while cooling down. On success sends the cat to the bowl (Roam only)
+/// and broadcasts `feed-cat` for the sparkle + "just ate" reaction.
+pub fn do_feed(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
     if let Some(t) = state.last_feed() {
         if t.elapsed() < FEED_COOLDOWN {
             return false;

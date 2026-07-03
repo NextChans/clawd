@@ -11,7 +11,7 @@
 }
 @media (prefers-color-scheme: dark) {
   .details { color: #efe7d8; background: #241f19; }
-  .d-card, .d-model-row, .d-thresholds, .d-spark, .d-donut, .d-heat { background: #2f2921 !important; }
+  .d-card, .d-model-row, .d-thresholds, .d-spark, .d-donut, .d-heat, .d-hero-session { background: #2f2921 !important; }
   .d-field input, .d-slider input { color: #efe7d8; }
 }
 
@@ -387,6 +387,67 @@
   line-height: 1.4;
   opacity: 0.5;
 }
+
+/* ---- grouped settings ---- */
+.d-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(128, 128, 128, 0.18);
+}
+.d-group-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.d-group-sub {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.85;
+}
+
+/* ---- hero session gauges ---- */
+.d-hero-session {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.d-gauge { display: flex; flex-direction: column; gap: 5px; }
+.d-gauge-top { display: flex; justify-content: space-between; align-items: baseline; }
+.d-gauge-label { font-size: 11px; opacity: 0.7; }
+.d-gauge-pct { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.d-gauge-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(128, 128, 128, 0.22);
+  overflow: hidden;
+}
+.d-gauge-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #4a90d9;
+  transition: width 0.4s ease;
+}
+.d-gauge-fill.warn { background: #e8a13a; }
+.d-gauge-fill.hot { background: #d8574e; }
+.d-hero-session .d-session-diag { margin: 0; opacity: 0.7; }
+
+/* Feed button is now a standalone action between usage and settings. */
+.d-feed { margin: 6px 0 2px; }
 
 /* Self-update row (version + check/update button). */
 .d-update {

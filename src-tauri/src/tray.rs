@@ -38,6 +38,7 @@ pub fn build(app: &App) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
+    let feed = MenuItem::with_id(app, "feed", "🍚 먹이 주기", true, None::<&str>)?;
 
     let toggle = MenuItem::with_id(
         app,
@@ -60,6 +61,7 @@ pub fn build(app: &App) -> tauri::Result<()> {
             &roam_item,
             &grab_item,
             &fish_item,
+            &feed,
             &sep1,
             &toggle,
             &reset,
@@ -86,6 +88,11 @@ pub fn build(app: &App) -> tauri::Result<()> {
                 // Toggle: a second click on the fishing item leaves play.
                 let fishing = app.state::<crate::AppState>().is_fishing();
                 crate::apply_fishing(app, !fishing);
+            }
+            "feed" => {
+                // Backend rate-limits (FEED_COOLDOWN), so a click while cooling
+                // down is simply a no-op.
+                crate::do_feed(app);
             }
             "toggle_cat" => {
                 if let Some(w) = app.get_webview_window("cat") {
