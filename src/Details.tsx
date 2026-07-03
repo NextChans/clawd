@@ -350,16 +350,30 @@ export default function Details() {
           {session.hasToken ? (
             <>
               {session.usage?.ok ? (
-                <div className="d-session-vals">
-                  <div>
-                    <span className="d-session-k">5시간 세션</span>
-                    <span className="d-session-v">{fmtPct(session.usage.session_pct)}</span>
+                <>
+                  <div className="d-session-vals">
+                    <div>
+                      <span className="d-session-k">5시간 세션</span>
+                      <span className="d-session-v">{fmtPct(session.usage.session_pct)}</span>
+                    </div>
+                    <div>
+                      <span className="d-session-k">주간</span>
+                      <span className="d-session-v">{fmtPct(session.usage.weekly_pct)}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="d-session-k">주간</span>
-                    <span className="d-session-v">{fmtPct(session.usage.weekly_pct)}</span>
-                  </div>
-                </div>
+                  {/* Activity diagnostic: is the session % actually climbing?
+                      This is the signal that wakes the cat, so surfacing it makes
+                      "why is it asleep" legible and lets us calibrate. */}
+                  <p className="d-session-diag">
+                    {session.delta == null
+                      ? '활동 감지: 측정 준비 중… (몇 분 필요)'
+                      : session.rising
+                        ? `🟢 사용 감지됨 · 최근 +${session.delta.toFixed(2)}%p`
+                        : `⚪ 최근 변화 없음 · ${
+                            session.delta >= 0 ? '+' : ''
+                          }${session.delta.toFixed(2)}%p (최근 12분)`}
+                  </p>
+                </>
               ) : (
                 <p className="d-session-warn">
                   아직 사용률을 못 읽었어요. 아래 진단을 보내주면 맞출게요:

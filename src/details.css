@@ -376,6 +376,11 @@
 .d-btn:hover:not(:disabled) { background: rgba(128, 128, 128, 0.18); }
 .d-btn:disabled { opacity: 0.5; cursor: default; }
 .d-btn.ghost { background: transparent; }
+.d-session-diag {
+  margin: 8px 0 0;
+  font-size: 11px;
+  opacity: 0.8;
+}
 .d-session-note {
   margin: 8px 0 0;
   font-size: 10px;

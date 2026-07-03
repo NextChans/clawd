@@ -13,8 +13,9 @@ export interface SessionUsage {
   debug: string;
 }
 
-/** Each check sends a (tiny) Messages request, so poll sparingly. */
-const POLL_MS = 120_000;
+/** Each check sends a (tiny, max_tokens:1) Messages request. 60s trades a few
+ * more of those for snappier wake-up once the session % ticks up. */
+const POLL_MS = 60_000;
 
 /**
  * Experimental session-usage integration (opt-in). Reads the 5-hour session +
@@ -44,6 +45,9 @@ export function useSessionUsage() {
   // history of samples, since the absolute % alone can't tell activity from a
   // high-but-idle window.
   const [rising, setRising] = useState(false);
+  // Session-% change (points) over the recent window — exposed for a visible
+  // "is my usage being detected?" readout and for calibrating the threshold.
+  const [delta, setDelta] = useState<number | null>(null);
   const histRef = useRef<{ t: number; pct: number }[]>([]);
 
   const check = useCallback(async () => {
@@ -58,7 +62,9 @@ export function useSessionUsage() {
         const h = histRef.current;
         h.push({ t: now, pct });
         while (h.length > 1 && now - h[0].t > RISE_WINDOW_MS) h.shift();
-        setRising(h.length >= 2 && pct - h[0].pct > RISE_EPS);
+        const d = h.length >= 2 ? pct - h[0].pct : null;
+        setDelta(d);
+        setRising(d != null && d > RISE_EPS);
       }
     } catch {
       /* ignore — leave the last snapshot */
@@ -104,5 +110,5 @@ export function useSessionUsage() {
     histRef.current = [];
   }, []);
 
-  return { hasToken, usage, rising, busy, check, saveToken, clearToken };
+  return { hasToken, usage, rising, delta, busy, check, saveToken, clearToken };
 }
