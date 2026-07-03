@@ -477,7 +477,10 @@ pub(crate) fn cursor_workarea(app: &AppHandle) -> Option<WorkArea> {
 pub(crate) fn default_cat_pos(wa: &WorkArea) -> (f64, f64) {
     let (w, _) = wa.logical_size();
     let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
-    (((w - CAT_SIZE) * 0.6).clamp(WANDER_MARGIN, max_x), WANDER_MARGIN)
+    (
+        ((w - CAT_SIZE) * 0.6).clamp(WANDER_MARGIN, max_x),
+        WANDER_MARGIN,
+    )
 }
 
 /// Blow the window up to cover the whole work area (Roam overlay).

@@ -110,6 +110,11 @@ export interface Config {
   /** Display name shown under your cat on peers' screens. Empty → the hook
    * falls back to a generated "cat-1234" style name. */
   nickname: string;
+  /** Optional custom iroh relay URL for remote rooms (e.g. a self-hosted
+   * `iroh-relay` on `https://relay.example.com`). Empty → n0's public relays.
+   * Set the *same* URL on both peers to bypass a network that blocks the
+   * public relays. See `docs/self-hosted-relay.md`. */
+  remoteRelayUrl: string;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -124,6 +129,7 @@ export const DEFAULT_CONFIG: Config = {
   catScale: CAT_SCALE_DEFAULT,
   networkEnabled: false,
   nickname: '',
+  remoteRelayUrl: '',
 };
 
 export type CatState =

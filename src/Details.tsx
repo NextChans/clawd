@@ -358,6 +358,21 @@ export default function Details() {
                 방을 만들면 초대 코드가 생겨요. 친구가 그 코드로 참가하면 서로의 고양이가 보입니다.
                 서버 없이 P2P로 연결돼요 (안 되면 공용 릴레이 경유).
               </span>
+              <details className="d-relay">
+                <summary>고급 · 커스텀 릴레이 (연결이 안 될 때)</summary>
+                <input
+                  type="text"
+                  className="d-nick-input"
+                  placeholder="https://relay.example.com"
+                  value={config.remoteRelayUrl}
+                  onChange={(e) => patch({ remoteRelayUrl: e.target.value })}
+                />
+                <span className="d-nick-note">
+                  회사망·방화벽이 공용 릴레이를 막아 🟡에서 안 넘어가면, 직접 띄운 iroh 릴레이
+                  주소를 넣으세요. <b>두 명 모두 같은 주소</b>를 넣어야 합니다. 비우면 n0 공용
+                  릴레이를 씁니다. 릴레이 직접 띄우는 법은 <code>docs/self-hosted-relay.md</code>.
+                </span>
+              </details>
             </>
           ) : (
             <>
