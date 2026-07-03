@@ -1,6 +1,6 @@
 [package]
 name = "clawd"
-version = "0.11.1"
+version = "0.11.2"
 description = "Cute floating cat that shows Claude Code usage on macOS"
 authors = ["chani"]
 edition = "2021"
