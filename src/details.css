@@ -560,6 +560,25 @@
   display: flex;
   gap: 6px;
 }
+.d-relay {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+.d-relay > summary {
+  font-size: 11px;
+  opacity: 0.7;
+  cursor: pointer;
+  user-select: none;
+}
+.d-relay > summary:hover {
+  opacity: 0.9;
+}
+.d-relay code {
+  font-size: 10px;
+  opacity: 0.9;
+}
 .d-room-row .d-nick-input {
   flex: 1;
   min-width: 0;

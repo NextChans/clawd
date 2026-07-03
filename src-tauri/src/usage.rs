@@ -55,14 +55,29 @@ fn price_for(model: &str) -> Price {
     let m = model.to_lowercase();
     // Opus family
     if m.contains("opus") {
-        return Price { input: 15.0, output: 75.0, cache_write: 18.75, cache_read: 1.5 };
+        return Price {
+            input: 15.0,
+            output: 75.0,
+            cache_write: 18.75,
+            cache_read: 1.5,
+        };
     }
     // Haiku family
     if m.contains("haiku") {
-        return Price { input: 0.8, output: 4.0, cache_write: 1.0, cache_read: 0.08 };
+        return Price {
+            input: 0.8,
+            output: 4.0,
+            cache_write: 1.0,
+            cache_read: 0.08,
+        };
     }
     // Sonnet family (and the safe default for anything unknown)
-    Price { input: 3.0, output: 15.0, cache_write: 3.75, cache_read: 0.3 }
+    Price {
+        input: 3.0,
+        output: 15.0,
+        cache_write: 3.75,
+        cache_read: 0.3,
+    }
 }
 
 /// A single priced assistant turn. Cached between polls, so it carries its own
@@ -158,7 +173,9 @@ fn parse_turn(line: &str) -> Option<Turn> {
         return None;
     }
 
-    let usage = msg.and_then(|m| m.get("usage")).or_else(|| v.get("usage"))?;
+    let usage = msg
+        .and_then(|m| m.get("usage"))
+        .or_else(|| v.get("usage"))?;
     let get = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
     let input = get("input_tokens");
     let output = get("output_tokens");
@@ -384,7 +401,12 @@ pub fn collect() -> Usage {
                 let (turns, new_offset) = read_turns(&path, 0, retain_cutoff);
                 store.insert(
                     path,
-                    FileEntry { mtime, size, offset: new_offset, turns },
+                    FileEntry {
+                        mtime,
+                        size,
+                        offset: new_offset,
+                        turns,
+                    },
                 );
             }
         }
@@ -439,10 +461,12 @@ pub fn collect() -> Usage {
                 if let Some(slot) = out.today_hourly.get_mut(hour) {
                     *slot += turn.total_tokens;
                 }
-                let m = models.entry(turn.model.clone()).or_insert_with(|| ModelUsage {
-                    model: turn.model.clone(),
-                    ..Default::default()
-                });
+                let m = models
+                    .entry(turn.model.clone())
+                    .or_insert_with(|| ModelUsage {
+                        model: turn.model.clone(),
+                        ..Default::default()
+                    });
                 m.tokens += turn.total_tokens;
                 m.cost += turn.cost;
             } else if ts >= yesterday_start {
@@ -499,7 +523,11 @@ pub fn collect() -> Usage {
     out.last_activity_ms = last_activity.map(|l| l.timestamp_millis());
 
     let mut models: Vec<ModelUsage> = models.into_values().collect();
-    models.sort_by(|a, b| b.cost.partial_cmp(&a.cost).unwrap_or(std::cmp::Ordering::Equal));
+    models.sort_by(|a, b| {
+        b.cost
+            .partial_cmp(&a.cost)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out.models_today = models;
 
     out

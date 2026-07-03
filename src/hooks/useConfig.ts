@@ -25,6 +25,8 @@ function merge(partial: Partial<Config> | undefined | null): Config {
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
     networkEnabled: p.networkEnabled ?? DEFAULT_CONFIG.networkEnabled,
     nickname: typeof p.nickname === 'string' ? p.nickname : DEFAULT_CONFIG.nickname,
+    remoteRelayUrl:
+      typeof p.remoteRelayUrl === 'string' ? p.remoteRelayUrl : DEFAULT_CONFIG.remoteRelayUrl,
   };
 }
 

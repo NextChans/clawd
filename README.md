@@ -77,7 +77,8 @@ invite friends' cats over the **network**.
   your screen, each showing a nickname and a *coarse* activity vibe (🔥 busy /
   💤 idle). **On the LAN** it's zero-config over mDNS; for friends on **other
   networks**, open an invite-code **room** (P2P over [iroh](https://iroh.computer),
-  a public relay as fallback) — **no server of ours**. Only a nickname, coat
+  a public relay as fallback — or [your own relay](docs/self-hosted-relay.md) if
+  a firewall blocks the public ones) — **no server of ours**. Only a nickname, coat
   color, mood, and activity bucket are shared; **never** token counts, cost, or
   project names. Off by default.
 - **🔄 Auto-update** — checks GitHub Releases on launch and one-click installs a
@@ -430,6 +431,12 @@ clawd/
 
 ## Changelog
 
+- **v0.11.4** — **Custom relay for stubborn networks.** Remote rooms can now
+  point at a **self-hosted iroh relay** (상세 · 설정 → 원격 방 → 고급) so rooms
+  link up on networks that block n0's public relays — the "🟡 릴레이 없음" case.
+  Both peers set the same URL; empty keeps the public relays. Clearer relay
+  diagnostics and an actionable no-relay hint. Setup guide:
+  [`docs/self-hosted-relay.md`](docs/self-hosted-relay.md) (#37).
 - **v0.11.3** — **Curious is the daytime baseline.** An idle daytime cat now
   rests as `curious` (기웃기웃) — poking around rather than the higher-energy
   `playing` — and steps up to active/alert/angry as your usage climbs; `playing`

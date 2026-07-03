@@ -127,14 +127,19 @@ export function useRemoteRoom(config: Config, state: CatState) {
     };
   }, []);
 
+  // Optional self-hosted relay: both peers must set the same URL. Empty → n0's
+  // public relays. Passed as `null` when unset so Rust falls back to Default.
+  const relayUrl = config.remoteRelayUrl?.trim() || null;
+
   const open = useCallback(async () => {
     setCode('');
     await invoke('presence_remote_open', {
       payload: buildPayload(config, state),
       secretHex: getIrohSecret(),
+      relayUrl,
     });
     setStatus('hosting');
-  }, [config, state]);
+  }, [config, state, relayUrl]);
 
   const join = useCallback(
     async (roomCode: string) => {
@@ -144,11 +149,12 @@ export function useRemoteRoom(config: Config, state: CatState) {
         payload: buildPayload(config, state),
         secretHex: getIrohSecret(),
         code: trimmed,
+        relayUrl,
       });
       setCode(trimmed);
       setStatus('joined');
     },
-    [config, state],
+    [config, state, relayUrl],
   );
 
   const leave = useCallback(async () => {

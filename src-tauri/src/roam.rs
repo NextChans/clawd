@@ -310,7 +310,13 @@ fn pick_sub_event(rng: &mut Rng, tod: TimeOfDay) -> (&'static str, u64) {
 /// Fire a resting flourish now and then, but only when the cat is resting
 /// (busy / agitated moods look wrong twitching). Re-arms its own timer each call;
 /// arming happens lazily so the first flourish is always `SUB_EVENT_S` out.
-fn maybe_sub_event(app: &AppHandle, rng: &mut Rng, now: Instant, sched: &mut Sched, cat_state: &str) {
+fn maybe_sub_event(
+    app: &AppHandle,
+    rng: &mut Rng,
+    now: Instant,
+    sched: &mut Sched,
+    cat_state: &str,
+) {
     let tod = time_of_day();
     match sched.next_sub {
         None => {
@@ -322,7 +328,10 @@ fn maybe_sub_event(app: &AppHandle, rng: &mut Rng, now: Instant, sched: &mut Sch
     }
     // Due: re-arm regardless, then emit only in a resting mood.
     sched.next_sub = Some(now + Duration::from_secs_f64(sub_event_interval(rng, tod)));
-    let resting = matches!(cat_state, "sleeping" | "exhausted" | "alert" | "curious" | "playing");
+    let resting = matches!(
+        cat_state,
+        "sleeping" | "exhausted" | "alert" | "curious" | "playing"
+    );
     if !resting {
         return;
     }
@@ -555,7 +564,9 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
     let max_x = (w_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
     let max_y = (h_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
 
-    let (px, py) = state.cat_pos().unwrap_or_else(|| crate::default_cat_pos(&wa));
+    let (px, py) = state
+        .cat_pos()
+        .unwrap_or_else(|| crate::default_cat_pos(&wa));
 
     // Playful moods occasionally spawn a plaything (butterfly / ball / yarn /
     // bird) instead of a plain hop. Each kind has its own motion pattern and
@@ -633,8 +644,12 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
         };
         let ground_y = h_log - CAT_SIZE - FURN_GROUND;
         let fx = (frac * w_log - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
-        let fy = (if lifted { ground_y - TOWER_LIFT } else { ground_y })
-            .clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+        let fy = (if lifted {
+            ground_y - TOWER_LIFT
+        } else {
+            ground_y
+        })
+        .clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
         let dist = ((fx - px).powi(2) + (fy - py).powi(2)).sqrt();
         let travel = ((dist / 190.0) * 1000.0).clamp(500.0, 4500.0) as u64;
         let linger = (rng.range(FURN_LINGER_S.0, FURN_LINGER_S.1) * 1000.0) as u64;
@@ -717,8 +732,9 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
                 },
             );
             state.set_cat_pos(tx, ty);
-            sched.next_hop =
-                Some(now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(0.4, 1.1)));
+            sched.next_hop = Some(
+                now + Duration::from_millis(dur_ms) + Duration::from_secs_f64(rng.range(0.4, 1.1)),
+            );
         } else {
             sched.next_hop = Some(now + Duration::from_secs(2));
         }

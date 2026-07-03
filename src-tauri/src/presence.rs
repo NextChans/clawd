@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_lite::StreamExt;
-use iroh::{Endpoint, NodeAddr, RelayMode, SecretKey, Watcher};
+use iroh::{Endpoint, NodeAddr, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
 use iroh_gossip::{
     api::Event,
     net::{Gossip, GOSSIP_ALPN},
@@ -311,6 +311,28 @@ type OnStatus = Arc<dyn Fn(bool, usize) + Send + Sync>;
 /// relay) so a stuck room can be debugged from the UI.
 type OnDebug = Arc<dyn Fn(String) + Send + Sync>;
 
+/// Build the relay configuration for the endpoint. A user-supplied **custom
+/// relay** (e.g. a self-hosted `iroh-relay`) takes over when set and parseable,
+/// otherwise we use n0's default public relays.
+///
+/// A custom relay *replaces* the defaults rather than adding to them: a
+/// self-hosted relay doesn't mesh with n0's, so for two peers to route through
+/// it, it has to be the home relay on *both* sides — which only happens
+/// reliably if it's the only one configured. Hence both peers must set the
+/// **same** URL. The payoff is bypassing a network that blocks n0's public
+/// relay hostnames (the "🟡 릴레이 없음" case): point both at your own relay on
+/// plain `:443` and it looks like ordinary HTTPS.
+fn relay_mode_from(relay_url: Option<&str>) -> RelayMode {
+    match relay_url
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<RelayUrl>().ok())
+    {
+        Some(url) => RelayMode::Custom(RelayMap::from(url)),
+        None => RelayMode::Default,
+    }
+}
+
 /// The async heart of the iroh transport: build endpoint + gossip, join/open
 /// the room, then broadcast our latest payload on a cadence while handing
 /// received payloads to `on_recv`, until `running` clears.
@@ -318,6 +340,7 @@ type OnDebug = Arc<dyn Fn(String) + Send + Sync>;
 async fn run_room(
     secret: SecretKey,
     room: Option<RoomTicket>,
+    relay_url: Option<String>,
     local: Arc<Mutex<Option<PresencePayload>>>,
     running: Arc<AtomicBool>,
     on_recv: OnRecv,
@@ -325,13 +348,21 @@ async fn run_room(
     on_status: OnStatus,
     on_debug: OnDebug,
 ) -> anyhow::Result<()> {
+    // Normalize once: an empty/whitespace URL means "no custom relay".
+    let custom_relay = relay_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
     // `discovery_n0` publishes our NodeId → address (incl. relay) to n0's DNS
     // and resolves peers the same way, so a joiner can reach the host across
     // different networks even if the shared ticket's addresses are LAN-only.
-    // Without it, cross-network rooms only linked up on the same LAN.
+    // Without it, cross-network rooms only linked up on the same LAN. (Discovery
+    // is independent of the relay, so it still works under a custom relay.)
     let endpoint = Endpoint::builder()
         .secret_key(secret)
-        .relay_mode(RelayMode::Default)
+        .relay_mode(relay_mode_from(custom_relay.as_deref()))
         .discovery_n0()
         .bind()
         .await?;
@@ -355,7 +386,11 @@ async fn run_room(
     for _ in 0..30 {
         let relays = endpoint.home_relay().get();
         if !relays.is_empty() {
-            relay_str = relays.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(", ");
+            relay_str = relays
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             break;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -364,7 +399,17 @@ async fn run_room(
     // Surface the relay we got — the decisive clue when a room won't link up
     // across networks (no relay ⇒ that network is blocking it).
     if relay_str.is_empty() {
-        on_debug("릴레이 없음 — 이 네트워크가 릴레이를 막는 듯".to_string());
+        if custom_relay.is_some() {
+            on_debug("커스텀 릴레이에 못 붙음 — URL·서버 상태를 확인하세요".to_string());
+        } else {
+            on_debug(
+                "릴레이 없음 — 이 네트워크가 공용 릴레이를 막는 듯. 상세 설정에서 \
+                 커스텀 릴레이를 넣거나 다른 네트워크(핫스팟)로 시도하세요"
+                    .to_string(),
+            );
+        }
+    } else if custom_relay.is_some() {
+        on_debug(format!("커스텀 릴레이 {relay_str}"));
     } else {
         on_debug(format!("릴레이 {relay_str}"));
     }
@@ -491,16 +536,19 @@ struct IrohTransport {
     /// hex secret key + optional room code to join (`None` → open a new room).
     secret_hex: String,
     room_code: Option<String>,
+    /// Optional custom relay URL (empty/`None` → n0's public relays).
+    relay_url: Option<String>,
 }
 
 impl IrohTransport {
-    fn new(secret_hex: String, room_code: Option<String>) -> Self {
+    fn new(secret_hex: String, room_code: Option<String>, relay_url: Option<String>) -> Self {
         Self {
             local: Arc::new(Mutex::new(None)),
             running: Arc::new(AtomicBool::new(false)),
             thread: None,
             secret_hex,
             room_code,
+            relay_url,
         }
     }
 
@@ -515,21 +563,30 @@ impl IrohTransport {
         on_status: OnStatus,
         on_debug: OnDebug,
     ) -> Result<(), String> {
-        let secret: SecretKey = self.secret_hex.parse().map_err(|e| format!("bad key: {e}"))?;
+        let secret: SecretKey = self
+            .secret_hex
+            .parse()
+            .map_err(|e| format!("bad key: {e}"))?;
         let room = match &self.room_code {
-            Some(code) => Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?),
+            Some(code) => {
+                Some(RoomTicket::from_str(code).map_err(|e| format!("bad room code: {e}"))?)
+            }
             None => None,
         };
         self.running.store(true, Ordering::SeqCst);
         let local = self.local.clone();
         let running = self.running.clone();
+        let relay_url = self.relay_url.clone();
         self.thread = Some(std::thread::spawn(move || {
-            let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
                 Ok(rt) => rt,
                 Err(_) => return,
             };
             let _ = rt.block_on(run_room(
-                secret, room, local, running, on_recv, on_room, on_status, on_debug,
+                secret, room, relay_url, local, running, on_recv, on_room, on_status, on_debug,
             ));
         }));
         Ok(())
@@ -672,6 +729,7 @@ impl Presence {
         payload: PresencePayload,
         secret_hex: String,
         code: Option<String>,
+        relay_url: Option<String>,
     ) -> Result<(), String> {
         // Rejoin cleanly if already in a room.
         if self.iroh_on.swap(false, Ordering::SeqCst) {
@@ -680,7 +738,7 @@ impl Presence {
             }
         }
 
-        let mut transport = IrohTransport::new(secret_hex, code);
+        let mut transport = IrohTransport::new(secret_hex, code, relay_url);
         transport.set_local(payload);
         let on_recv = self.make_on_recv(app);
         let app_room = app.clone();
@@ -790,8 +848,9 @@ pub fn presence_remote_open(
     state: tauri::State<'_, Presence>,
     payload: PresencePayload,
     secret_hex: String,
+    relay_url: Option<String>,
 ) -> Result<(), String> {
-    state.remote_start(&app, payload, secret_hex, None)
+    state.remote_start(&app, payload, secret_hex, None, relay_url)
 }
 
 /// Join an existing remote room by its base32 code.
@@ -802,8 +861,9 @@ pub fn presence_remote_join(
     payload: PresencePayload,
     secret_hex: String,
     code: String,
+    relay_url: Option<String>,
 ) -> Result<(), String> {
-    state.remote_start(&app, payload, secret_hex, Some(code))
+    state.remote_start(&app, payload, secret_hex, Some(code), relay_url)
 }
 
 /// Leave the remote room (LAN, if any, stays).
