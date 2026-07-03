@@ -3,21 +3,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Latest Release](https://img.shields.io/github/v/release/NextChans/clawd)
 
-> A cute floating cat that lives on your Mac and reacts to your Claude Code usage.
+> A cute floating cat that lives on your Mac and reacts to how hard you're driving Claude.
 
-> Cute floating cat that shows your Claude Code usage on macOS.
-
-A tiny, frameless, always-on-top cat that lives on your desktop and changes its
-mood based on how hard you're driving Claude Code. Low activity → it naps and
-plays. Burning tokens → it gets alert, then hisses. Near your daily budget →
-it's exhausted. By default it **roams** — clicks pass straight through and the
-cat wanders your screen on its own — until you **grab** it (**⌘⇧C** or the tray)
-to drag, click, or configure it.
+A tiny, frameless, always-on-top cat that wanders your desktop and changes its
+mood with your Claude usage. Quiet → it plays and (at night) naps; burning
+tokens → it perks up, then hisses; nearing your session limit → it tires out.
+It reads your local **Claude Code** logs, and can optionally track your **5-hour
+session & weekly limits** — which also covers claude.ai **web** usage. By
+default it **roams** — clicks pass straight through and the cat wanders on its
+own — until you **grab** it (**⌘⇧C** or the tray) to drag, pet, or configure it.
+Play with it via a **🎣 fishing wand** and **🍚 feeding** from the tray, and
+invite friends' cats over the **network**.
 
 ```
-   /\_/\     clawd watches ~/.claude/projects/**/*.jsonl,
-  ( o.o )    re-implements ccusage's token+cost aggregation in Rust,
-   > ^ <     and maps it onto a 7-state cat.
+   /\_/\     clawd watches ~/.claude/projects/**/*.jsonl (ccusage-style
+  ( o.o )    token+cost aggregation, re-implemented in Rust), optionally
+   > ^ <     reads your session/weekly limits, and maps it onto a 7-state cat.
 ```
 
 ## Screenshots
@@ -53,25 +54,39 @@ to drag, click, or configure it.
   cat alive.
 - **🌙 Time-of-day personality** — winds down and sleeps at night, stretches in
   the morning.
-- **🖐️ Petting** — hover/hold the cat in Grab mode for a purr.
-- **🍚 Feeding** — a button in the details window sends the cat trotting to its
-  bowl.
+- **🌙 Day/night rhythm** — naps only at night when idle; during the day an idle
+  cat stays up and plays. A short launch grace means it never opens already
+  asleep.
+- **🎣 Fishing play** — from the tray, wave a teaser wand with your cursor; the
+  feather dangles on a string with real physics and the cat chases it (Esc to
+  end).
+- **🍚 Feeding & 🖐️ petting** — feed from the tray (the cat trots to its bowl);
+  hover/hold it in Grab mode for a purr.
+- **📊 Session-usage integration (experimental)** — optionally show your **5-hour
+  session** and **weekly** limits as live gauges, with a heads-up notification
+  near the cap. Because it uses a Claude Code OAuth token, it also reflects
+  claude.ai **web** usage — and the cat perks up while you're actively using
+  Claude. See [Session usage](#session-usage-experimental). Off by default.
+- **📈 Usage visualization** — session/weekly gauges, today/week/month tokens,
+  model donut, hourly sparkline, weekly heatmap, and a "vs. yesterday" delta.
+- **🐈‍⬛ Social mode (experimental)** — opt in and friends' clawd cats wander onto
+  your screen, each showing a nickname and a *coarse* activity vibe (🔥 busy /
+  💤 idle). **On the LAN** it's zero-config over mDNS; for friends on **other
+  networks**, open an invite-code **room** (P2P over [iroh](https://iroh.computer),
+  a public relay as fallback) — **no server of ours**. Only a nickname, coat
+  color, mood, and activity bucket are shared; **never** token counts, cost, or
+  project names. Off by default.
 - **🔄 Auto-update** — checks GitHub Releases on launch and one-click installs a
   signed new build (falls back to opening the Releases page when unsigned).
 - **📏 Adjustable size** — a 50–200% character-size slider.
 - **🖥️ Multi-monitor** — spawns on the display your cursor is on; "이 화면으로
   이동" re-homes it to the current screen.
 - **🚀 Auto-start** — optional macOS Login Item.
-- **📊 Usage visualization** — model donut, hourly sparkline, weekly heatmap, and
-  a "vs. yesterday" delta.
-- **🐈‍⬛ Social mode (LAN, experimental)** — opt in and other clawd cats on the
-  same network wander onto your screen, each showing a nickname and a *coarse*
-  activity vibe (🔥 busy / 💤 idle). Discovery is pure peer-to-peer over mDNS —
-  **no server**. Only a nickname, coat color, mood, and activity bucket are
-  shared; **never** token counts, cost, or project names. Off by default.
-- **🔒 Private by design** — no login and no network calls for stats: it parses
-  your local `~/.claude` logs and nothing leaves your machine. The one exception
-  is Social mode above, which is strictly opt-in and shares only coarse signals.
+- **🔒 Private by design** — no login and no network calls for local stats: it
+  parses your `~/.claude` logs and nothing leaves your machine. The two opt-in
+  exceptions are Social mode (shares only coarse signals) and the session-usage
+  integration (talks to the Anthropic API with a token you provide, stored in
+  the macOS Keychain).
 
 ---
 
@@ -111,8 +126,12 @@ window, otherwise it falls back to opening the Releases page in your browser.
 ## Concept
 
 - **Floating, no chrome** — transparent background, no title bar, no shadow.
-- **Mood = usage** — the cat animates by token rate and daily budget ratio.
-- **Two modes — Roam ↔ Grab:**
+- **Mood = usage** — the cat animates by your token **rate** (tokens/min over
+  the last 5 min) and the **time of day**; with the optional session-usage
+  integration on, nearing your **5-hour session limit** tires it out too, and it
+  perks up whenever your usage is actively climbing (incl. claude.ai web).
+- **Two modes — Roam ↔ Grab** (plus a transient **🎣 Fishing** play session from
+  the tray):
   - **🐾 Roam** (default) — the window is **click-through** (mouse events pass to
     whatever's behind it) and the cat **wanders the screen on its own**. It never
     gets in your way.
@@ -132,18 +151,20 @@ window, otherwise it falls back to opening the Releases page in your browser.
 
 ## Cat states
 
-| State       | When                                              | Look                          |
-|-------------|---------------------------------------------------|-------------------------------|
-| `sleeping`  | idle > 30 min, no active session                  | eyes closed, `z z z`, slow    |
-| `playing`   | very low / no rate                                | happy eyes, sparkle, fast tail|
-| `curious`   | rate > `low`                                      | wide eyes, `?`                |
-| `active`    | rate > `mid`                                      | open eyes, gentle smile       |
-| `alert`     | rate > `high` **or** budget > 60%                 | big eyes, raised ears, `!`    |
-| `angry`     | rate > `veryHigh` **or** budget > 85%             | flat ears, fangs, hiss        |
-| `exhausted` | budget > 95% **and** rate > `high`                | `><` eyes, sweat drop         |
+| State       | When                                                        | Look                          |
+|-------------|-------------------------------------------------------------|-------------------------------|
+| `sleeping`  | **at night** (22:00–06:00) and idle > 15 min                | eyes closed, `z z z`, slow    |
+| `playing`   | very low / no rate — the daytime idle resting mood          | happy eyes, sparkle, fast tail|
+| `curious`   | rate > `low`                                                | wide eyes, `?`                |
+| `active`    | rate > `mid`, **or** session usage actively climbing        | open eyes, gentle smile       |
+| `alert`     | rate > `high`                                               | big eyes, raised ears, `!`    |
+| `angry`     | rate > `veryHigh`                                           | flat ears, fangs, hiss        |
+| `exhausted` | sustained high rate for ~30 min, **or** session ≥ 90%       | `><` eyes, sweat drop         |
 
-Only `playing`, `alert`, and `angry` are strongly differentiated in this first
-draft; the other four reuse the same rig with tweaked expression/pose/color.
+Mood is picked from whichever signal reads more intense. During the day an idle
+cat **plays** rather than sleeping; sleeping is reserved for a quiet night. The
+session-based conditions only apply when the (opt-in) session-usage integration
+is on.
 
 ## Requirements
 
@@ -185,36 +206,43 @@ npm run release:local
 
 ## Release process
 
-Releases are built by GitHub Actions (`.github/workflows/release.yml`): pushing
-a **`v*` tag** triggers a `macos-latest` runner that builds the universal DMG
-and publishes a Release with auto-generated notes and the DMG attached.
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a
+`macos-latest` runner: it builds the **universal DMG** plus **signed updater
+artifacts** (`clawd.app.tar.gz` + `.sig` + `latest.json`) and publishes a
+Release with auto-generated notes. Two ways to trigger it:
 
-```sh
-npm run version:bump 0.6.0    # syncs package.json + Cargo.toml + tauri.conf.json
-git commit -am "chore: bump to 0.6.0"
-git tag v0.6.0
-git push && git push --tags   # tag push kicks off the Release workflow
-```
+- **Push a `v*` tag** (classic):
+  ```sh
+  npm run version:bump 0.11.1   # syncs package.json + Cargo.toml + tauri.conf.json
+  cd src-tauri && cargo metadata --format-version 1 >/dev/null && cd ..  # refresh Cargo.lock
+  git commit -am "chore: bump to 0.11.1"
+  git tag v0.11.1 && git push && git push --tags
+  ```
+- **Or `workflow_dispatch`** — no tag push needed: bump + merge the version, then
+  **Actions → Release → Run workflow** (branch `main`; version defaults to
+  `package.json`). The workflow mints the `v<version>` tag itself — handy when
+  you can't push tags from where you're working.
 
-Watch the run under the repo's **Actions** tab; the DMG appears on the Release
-once it's green.
+Watch the run under the **Actions** tab; the assets appear on the Release once
+it's green.
 
-> **Cost note:** macOS Actions minutes are limited on the free tier
-> (~300 min/month for personal accounts, and macOS runners bill at 10×), and
-> universal builds are slow — so tag deliberately, not on every commit.
+> **Cost note:** macOS Actions minutes are limited on the free tier and
+> universal builds are slow (~15 min), so release deliberately, not per commit.
 
-**Fallback** if CI fails — build and publish locally with the `gh` CLI:
+**Fallback** if CI is unavailable — build and publish locally with the `gh` CLI:
 
 ```sh
 npm run release:local   # or: npm run tauri:build:universal
-gh release create v0.6.0 --generate-notes \
+gh release create v0.11.1 --generate-notes \
   src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 ```
 
 ## Permissions (macOS)
 
-- **Notifications** — for the 80% / 100% daily-budget alerts. Allow when
-  prompted (toggle alerts off in the details window if you don't want them).
+- **Notifications** — only used by the optional session-usage integration, for
+  the heads-up when your **5-hour session or weekly usage crosses ~90%**. Allow
+  when prompted the first time it fires; if you never connect the integration,
+  no notifications are sent.
 
 That's it — the **⌘⇧C** hotkey uses Tauri's global-shortcut plugin and needs
 **no Accessibility permission**. (Earlier builds used an `rdev` keyboard monitor
@@ -232,10 +260,16 @@ for an Option-key hold; that was removed — see the changelog.)
   - **click** → open the details window
 - **⌘⇧C** again (or tray → *🐾 놀기 (Roam)*) → back to Roam; the cat resumes
   wandering from wherever you left it.
-- **Tray menu** → pick Roam / Grab, show/hide the cat, reset position, **move to
-  the current screen (이 화면으로 이동)**, open details/settings, check for
-  updates, quit. The tray tooltip and a small menu-bar suffix (`✋`) show which
-  mode you're in.
+- **Tray menu** → the cat's home base:
+  - **🐾 놀기 (Roam) / 🖐️ 잡기 (Grab)** — switch modes.
+  - **🎣 낚시대 놀이** — start fishing play (move your cursor to wave the wand;
+    **Esc** or click the item again to stop). While playing, the full-screen
+    overlay captures the cursor, so other apps aren't clickable — it's a
+    deliberate play session.
+  - **🍚 먹이 주기** — feed the cat (it trots to its bowl; 60 s cooldown).
+  - Show/hide the cat, reset position, **이 화면으로 이동** (move to the current
+    screen), **상세 · 설정…** (details/settings), check for updates, quit.
+  - The tray tooltip and a menu-bar glyph (🐾 / ✋ / 🎣) show the current mode.
 
 ## Tuning thresholds
 
@@ -255,6 +289,31 @@ sync live between the cat and details windows.
 > but voluminous, so tokens/min runs large during active sessions. The default
 > thresholds account for this; tune to taste.
 
+## Session usage (experimental)
+
+Claude subscription usage — your rolling **5-hour session** window and **weekly**
+limit — has no official public API, so this is opt-in and best-effort. clawd
+does what Claude Code does internally: with a **Claude Code OAuth token** it
+makes one tiny Messages request and reads the rate-limit headers off the
+response.
+
+**Set it up** in the details window, under *세션 사용량 연동 (실험)*:
+
+1. In a terminal, run `claude setup-token` and copy the `sk-ant-oat01…` token.
+2. Paste it into the panel and hit **저장**. The token is stored in the **macOS
+   Keychain** — never in the config file, never shared.
+
+Once connected you get live **5-hour / weekly gauges** at the top of the details
+window, a **near-cap notification** (~90%), and the cat's mood reacts to your
+real usage — including **claude.ai web** usage the local logs can't see (the cat
+perks up while usage climbs, and tires as you approach the cap).
+
+> **Caveats.** The endpoint + header names are undocumented and may change
+> without notice — if they do, clawd just shows a diagnostic and falls back to
+> your local logs. Each check sends one `max_tokens: 1` request (~60 s polling).
+> The values track the *Claude Code token's* limits, which can differ from the
+> numbers on claude.ai's settings page. Disconnect any time with **연동 해제**.
+
 ## Cat art & coat colors
 
 The cat renders from **PNG sprites** in `src/assets/cat/<color>/<pose>.png`,
@@ -264,9 +323,12 @@ fill them in incrementally.
 
 - **Colors** (pick in the details window; persists in config, live-syncs to the
   cat): `cream` · `black` · `orange_tabby` · `gray_tabby` · `white`.
-- **Poses** (9): `sit_forward`, `walk_right_a/b`, `run_right_a/b`,
-  `sleep_curled`, `alert_arched`, `angry_hiss`, `exhausted_lie`. Walk/run are
-  two-frame flip animations; side poses face right and mirror automatically.
+- **Poses**: the core rig — `sit_forward`, `walk_right_a/b`, `run_right_a/b`,
+  `sleep_curled`, `alert_arched`, `angry_hiss`, `exhausted_lie` — plus
+  expressive one-offs for flourishes and interactions (`yawn`, `stretch`,
+  `blink`, `startled`, `playing_pounce`, `eating`, `happy_purr`). Walk/run are
+  two-frame flip animations; side poses face right and mirror automatically; any
+  sprite that's missing falls back to the vector cat.
 
 See **[`src/assets/cat/README.md`](src/assets/cat/README.md)** for the exact
 file layout, image requirements (transparent, square, centered), and a ready-to-
@@ -286,6 +348,12 @@ assistant turn with a `usage` block it:
 
 The frontend polls this every 30 s (Rust emits a `usage` event).
 
+The optional **session/weekly limits** come from a separate source
+(`src-tauri/src/session.rs`): the rate-limit headers on the Anthropic Messages
+API, read with a Claude Code OAuth token — see
+[Session usage](#session-usage-experimental). That path is off unless you
+connect a token.
+
 ### Pricing (USD per 1M tokens, approximate)
 
 | Family | Input | Output | Cache write | Cache read |
@@ -304,15 +372,23 @@ clawd/
 ├─ index.html
 ├─ src/                      # React + TS frontend
 │  ├─ main.tsx               # routes cat vs. details window (?window=details)
-│  ├─ App.tsx                # cat window (drag / click / tooltip)
-│  ├─ Details.tsx            # details + settings window
-│  ├─ types.ts               # Usage / Config / CatState + defaults
+│  ├─ App.tsx                # cat overlay: wander, fishing play, tooltip, alerts
+│  ├─ Details.tsx            # details + settings window (gauges, charts, knobs)
+│  ├─ types.ts               # Usage / Config / CatState / Peer + defaults
 │  ├─ hooks/
-│  │  ├─ useUsage.ts         # get_usage + `usage` event subscription
+│  │  ├─ useUsage.ts         # local-log usage + `usage` event
 │  │  ├─ useConfig.ts        # Tauri store config, synced across windows
 │  │  ├─ useUpdater.ts       # self-update (check / download / install)
-│  │  └─ useCatState.ts      # usage → CatState classifier
-│  ├─ components/Cat/        # SVG cat + CSS animations
+│  │  ├─ useCatState.ts      # usage (+ session) → CatState classifier
+│  │  ├─ usePresence.ts      # social mode: LAN + remote rooms
+│  │  ├─ useSessionUsage.ts  # 5h/weekly gauges via an OAuth token
+│  │  └─ useSessionAlert.ts  # near-cap notification
+│  ├─ components/
+│  │  ├─ Cat/                # PNG sprite cat + vector fallback
+│  │  ├─ Charts/             # model donut, hourly sparkline, weekly heatmap
+│  │  ├─ Playthings/         # butterfly, ball, yarn, bird, fishing lure
+│  │  ├─ Furniture/          # cushion, tiered cat tower, food bowl
+│  │  └─ Peers/              # visiting peer cats
 │  └─ utils/format.ts
 ├─ scripts/
 │  ├─ bump-version.mjs       # sync version across the three manifests
@@ -320,10 +396,12 @@ clawd/
 │  └─ gen-updater-manifest.mjs  # build latest.json from the signed artifacts
 └─ src-tauri/                # Rust backend
    ├─ src/
-   │  ├─ lib.rs              # window setup, Roam/Grab mode, hotkey, poller, monitors
+   │  ├─ lib.rs              # windows, Roam/Grab/Fishing modes, hotkey, poller
    │  ├─ roam.rs             # wander scheduler (emits cat-wander events)
-   │  ├─ usage.rs            # ccusage-style aggregation
-   │  └─ tray.rs             # menu-bar tray (mode radio + status)
+   │  ├─ usage.rs            # ccusage-style local-log aggregation
+   │  ├─ session.rs          # 5h/weekly limits via API rate-limit headers
+   │  ├─ presence.rs         # social mode (mDNS LAN + iroh remote rooms)
+   │  └─ tray.rs             # menu-bar tray (modes, feed, status)
    ├─ tauri.conf.json        # cat + details window config + updater endpoint
    └─ capabilities/default.json
 ```
@@ -346,17 +424,41 @@ clawd/
 
 ## Changelog
 
-- **Unreleased** — **Auto-update, character size, multi-monitor.** The tray
-  "새 버전 확인" and a launch-time check now use Tauri's **updater**: signed
-  `.app.tar.gz` artifacts + a `latest.json` on each Release let the app download
-  and install a new build in place (one click in the details window), with a
-  graceful fallback to opening the Releases page when a build is unsigned. Added
-  a **character-size slider** (50–200%) and **cursor-aware multi-monitor
-  placement** — the overlay spawns on the display under the cursor and a new tray
-  item **이 화면으로 이동** re-homes it. Signing is set up once via
-  `scripts/setup-updater-key.sh`; `scripts/gen-updater-manifest.mjs` and the
-  release workflow produce `latest.json`. **Note:** the updater only kicks in for
-  releases *after* the signing key + pubkey are configured.
+- **v0.11.1** — **Day/night rhythm + polish.** Naps only at night when idle and
+  plays during the day, with a launch grace so it never opens already asleep
+  (#26). Roaming now spreads across the whole screen instead of hugging the
+  right edge (#27). A cat-toned notification when your 5-hour/weekly usage nears
+  ~90%, plus a richer first-run onboarding hint (#28). Launches off the corner
+  so its bubbles don't clip (#29).
+- **v0.11.0** — **Session-usage integration + details redesign.** Optional
+  5-hour/weekly limit **gauges** via a Claude Code OAuth token (stored in the
+  Keychain), with the cat's mood driven by whether usage is actively *climbing*
+  — so it reflects claude.ai **web** usage too (#20–#23). The teaser-wand fishing
+  play got real dangling physics (#19). The details window was regrouped
+  (session gauges up top, labelled sections) and **먹이 주기 moved to the tray**
+  next to fishing (#24).
+- **v0.10.0** — **Fishing play + tag-free releases.** A **🎣 teaser-wand** play
+  mode: move the wand and the cat chases the lure (#17). Ball play now throws the
+  ball *before* the cat chases it (#15). Releases can be cut via
+  `workflow_dispatch` (Actions → Run workflow) with no tag push required (#16).
+- **v0.9.0** — **Reliable remote rooms.** A visiting cat no longer vanishes
+  mid-session — both sides re-dial a stalled link (message-freshness based, and
+  the room opener re-dials too), fixing the "🟢 connected but the cat
+  disappeared" case (#12–#13).
+- **v0.8.0** — **Remote social rooms (WAN).** Invite a friend on another network
+  with a room code — P2P over [iroh](https://iroh.computer) (QUIC hole-punching,
+  a public relay as fallback), with connection/relay diagnostics in the UI.
+  Sleeping cats now curl up in the bottom-right corner, out of the way.
+- **v0.7.0** — **LAN social mode.** Opt in and other clawd cats on your network
+  wander onto your screen in 2D and come over to play; discovery is server-less
+  over mDNS, sharing only coarse signals. Added a CI build-check.
+- **v0.6.0** — **Signed auto-update, character size, multi-monitor.** Turned on
+  real signed updater artifacts (`.app.tar.gz` + `.sig` + `latest.json`) so the
+  tray "새 버전 확인" and the launch-time check install a new build in place
+  (one click) — auto-update works from this release onward. Added a **50–200%
+  character-size slider** and **cursor-aware multi-monitor placement** with a
+  new **이 화면으로 이동** tray item. Signing is set up once via
+  `scripts/setup-updater-key.sh`.
 - **v0.5.0** — **Automated DMG releases + in-app update check.** Pushing a
   `v*` tag now builds a **universal (Apple Silicon + Intel) DMG** on GitHub
   Actions and publishes a Release with the DMG attached
@@ -422,26 +524,29 @@ clawd/
 **Done**
 
 - [x] Roam ↔ Grab modes + full-screen click-through overlay
-- [x] Smooth walk/run wandering with direction flip
+- [x] Smooth walk/run wandering, direction flip, whole-screen coverage
+- [x] Day/night sleep rhythm + launch grace
 - [x] 5 coat colors + PNG sprites (vector fallback)
 - [x] State-driven furniture (cushion / tower / bowl) + tower tier evolution
 - [x] Playthings, micro-events, time-of-day personality
-- [x] Petting + feeding
-- [x] Usage viz — model donut, hourly sparkline, weekly heatmap, yesterday delta
-- [x] Automated universal DMG releases via GitHub Actions
+- [x] Petting, feeding, and **🎣 fishing** play (cursor-driven, physics lure)
+- [x] Usage viz — session/weekly gauges, model donut, sparkline, heatmap, delta
+- [x] **Social mode** — LAN (mDNS) + remote invite-code rooms (iroh P2P)
+- [x] **Session-usage integration** — 5h/weekly gauges, activity-aware mood,
+      near-cap notification (covers claude.ai web usage)
+- [x] Automated universal DMG releases (tag **or** `workflow_dispatch`)
 - [x] In-app **auto-update** with signed artifacts
-- [x] Adjustable character size
-- [x] Cursor-aware **multi-monitor** placement + "이 화면으로 이동"
-- [x] Optional auto-start (Login Item)
+- [x] Adjustable character size · cursor-aware multi-monitor · auto-start
 
 **Next up**
 
 - [ ] Wander across **multiple monitors** simultaneously (not just re-home)
 - [ ] Team dashboard — several cats splitting shared usage
 - [ ] A companion **CLI** (`clawd status`) for headless usage
+- [ ] Daily / weekly usage **summary card**
+- [ ] **Notarize** the app so Gatekeeper stops warning on first launch
 - [ ] Richer / Lottie animations and more distinct per-state poses
 - [ ] Optional sounds (meow, hiss), off by default
-- [ ] Detect Claude usage beyond Claude Code (direct Anthropic API traffic)
 - [ ] Incremental log tailing instead of full rescans
 - [ ] Windows / Linux support
 
