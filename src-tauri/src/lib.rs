@@ -98,6 +98,19 @@ pub(crate) struct PlaythingEvent {
     pub duration_ms: u64,
 }
 
+/// A transient furniture "visit" during a playful mood: a prop (`tower` /
+/// `cushion` / `bowl`) fades in, the cat is sent to it via a parallel
+/// `cat-wander`, plays for `duration_ms`, then it fades out. `arrive_ms` is the
+/// cat's travel time, so the frontend can pounce on arrival. Adds variety to
+/// free roam beyond the mood-anchored furniture.
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct FurnitureEvent {
+    /// `"tower"` | `"cushion"` | `"bowl"`.
+    pub kind: String,
+    pub arrive_ms: u64,
+    pub duration_ms: u64,
+}
+
 pub struct AppState {
     /// `false` = **Roam** (click-through, auto-wander), `true` = **Grab** (the
     /// cat captures the mouse for drag/click and holds still).
