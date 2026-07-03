@@ -59,14 +59,15 @@ function classifyLocal(usage: Usage, config: Config): StateReason {
   const active = usage.session_active;
   const r = formatRate(rate);
 
-  // At night the cat dozes off sooner: relax the sleep-idle threshold from 30m
-  // to 15m during 22:00–05:59 (local). Matches roam.rs's night wind-down.
+  // Day/night rhythm: the cat only naps at night (22:00–05:59 local) when it's
+  // been idle a while. During the day an idle cat stays up and *plays* instead
+  // of sleeping — a daytime companion shouldn't be curled up asleep.
   const hour = new Date().getHours();
   const isNight = hour >= 22 || hour < 6;
-  const sleepIdle = isNight ? 15 : 30;
+  const NIGHT_SLEEP_IDLE = 15;
 
-  if (!active && usage.idle_minutes > sleepIdle)
-    return { state: 'sleeping', reason: `비활성 · 마지막 활동 ${Math.round(usage.idle_minutes)}분 전` };
+  if (!active && isNight && usage.idle_minutes > NIGHT_SLEEP_IDLE)
+    return { state: 'sleeping', reason: `밤 · 비활성 ${Math.round(usage.idle_minutes)}분` };
   if (isSustainedHighRate(usage, high) && rate >= high)
     return {
       state: 'exhausted',
@@ -80,7 +81,10 @@ function classifyLocal(usage: Usage, config: Config): StateReason {
     return { state: 'active', reason: `rate ${r} > active ${formatRate(mid)}` };
   if (rate > low)
     return { state: 'curious', reason: `rate ${r} > curious ${formatRate(low)}` };
-  return { state: 'playing', reason: rate > 0 ? `rate ${r} · 여유` : '유휴 · 활동 없음' };
+  return {
+    state: 'playing',
+    reason: rate > 0 ? `rate ${r} · 여유` : isNight ? '밤 · 유휴' : '낮 · 노는 중',
+  };
 }
 
 /**
@@ -99,7 +103,31 @@ function classifyLocal(usage: Usage, config: Config): StateReason {
  * Otherwise the local-activity mood stands, so an idle machine still naps even
  * at a high accumulated %.
  */
+/** Milliseconds after launch during which the cat stays awake even with no
+ * recent activity, so a fresh start greets you instead of napping on the spot. */
+const LAUNCH_GRACE_MS = 120_000;
+const LAUNCHED_AT = Date.now();
+
+/**
+ * Public classifier — wraps {@link classifyCore} with a launch grace: for the
+ * first couple of minutes after the app starts, a would-be `sleeping` reads as
+ * `playing` instead, so the cat perks up and wanders rather than dozing off the
+ * instant it opens.
+ */
 export function classifyWithReason(
+  usage: Usage,
+  config: Config,
+  sessionPct?: number | null,
+  sessionRising?: boolean,
+): StateReason {
+  const r = classifyCore(usage, config, sessionPct, sessionRising);
+  if (r.state === 'sleeping' && Date.now() - LAUNCHED_AT < LAUNCH_GRACE_MS) {
+    return { state: 'playing', reason: '방금 시작 · 기지개 켜는 중' };
+  }
+  return r;
+}
+
+function classifyCore(
   usage: Usage,
   config: Config,
   sessionPct?: number | null,
