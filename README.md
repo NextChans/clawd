@@ -431,10 +431,12 @@ clawd/
 
 ## Changelog
 
-- **v0.11.6** — **Nickname editable without the LAN toggle.** The nickname field
-  was hidden unless LAN presence ("네트워크에서 친구 초대") was on, but remote
-  rooms broadcast the nickname too — so remote-only users were stuck with a
-  generated `cat-1234` name. It's now always editable (#39).
+- **v0.11.6** — **Remote-room polish.** The nickname field was hidden unless LAN
+  presence ("네트워크에서 친구 초대") was on, but remote rooms broadcast the
+  nickname too — so remote-only users were stuck with a generated `cat-1234`
+  name; it's now always editable. Also stopped your **own cat showing up as a
+  visitor** when a payload loops back through a room (self-echo is now dropped)
+  (#39).
 - **v0.11.5** — **Fix remote rooms never getting a relay.** iroh 0.11's built-in
   default relays point at n0's old `*.relay.n0.iroh.iroh.link` hostnames, whose
   TLS cert no longer matches (n0 moved to `*.relay.n0.iroh.link`) — so the relay

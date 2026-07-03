@@ -640,6 +640,10 @@ pub struct Presence {
     lan: Mutex<LanTransport>,
     iroh: Mutex<Option<IrohTransport>>,
     peers: Arc<Mutex<HashMap<String, PeerEntry>>>,
+    /// Our own peer id, so a payload that comes back to us (e.g. echoed through
+    /// a gossip room) is dropped instead of rendering our own cat as a visitor.
+    /// mDNS filters self at discovery, but the iroh path has no such gate.
+    self_id: Arc<Mutex<Option<String>>>,
     lan_on: AtomicBool,
     iroh_on: AtomicBool,
     prune_running: Arc<AtomicBool>,
@@ -652,6 +656,7 @@ impl Default for Presence {
             lan: Mutex::new(LanTransport::new()),
             iroh: Mutex::new(None),
             peers: Arc::new(Mutex::new(HashMap::new())),
+            self_id: Arc::new(Mutex::new(None)),
             lan_on: AtomicBool::new(false),
             iroh_on: AtomicBool::new(false),
             prune_running: Arc::new(AtomicBool::new(false)),
@@ -665,8 +670,14 @@ impl Presence {
     /// Shared by both transports so a peer from either lands in one roster.
     fn make_on_recv(&self, app: &AppHandle) -> OnRecv {
         let peers = self.peers.clone();
+        let self_id = self.self_id.clone();
         let app = app.clone();
         Arc::new(move |p: PresencePayload| {
+            // Drop our own payload if it loops back (gossip echo) — otherwise we'd
+            // render our own cat as a visiting peer.
+            if self_id.lock().unwrap().as_deref() == Some(p.id.as_str()) {
+                return;
+            }
             {
                 let mut table = peers.lock().unwrap();
                 table.insert(
@@ -721,6 +732,7 @@ impl Presence {
     // --- LAN ---------------------------------------------------------------
 
     fn start_lan(&self, app: &AppHandle, payload: PresencePayload) -> Result<(), String> {
+        *self.self_id.lock().unwrap() = Some(payload.id.clone());
         self.lan.lock().unwrap().set_local(payload);
         if self.lan_on.load(Ordering::SeqCst) {
             return Ok(()); // already up — the seed above is the live update
@@ -760,6 +772,7 @@ impl Presence {
             }
         }
 
+        *self.self_id.lock().unwrap() = Some(payload.id.clone());
         let mut transport = IrohTransport::new(secret_hex, code, relay_url);
         transport.set_local(payload);
         let on_recv = self.make_on_recv(app);
@@ -794,6 +807,7 @@ impl Presence {
 
     /// Push a payload update to whichever transports are live.
     fn publish(&self, payload: PresencePayload) {
+        *self.self_id.lock().unwrap() = Some(payload.id.clone());
         if self.lan_on.load(Ordering::SeqCst) {
             self.lan.lock().unwrap().set_local(payload.clone());
         }
