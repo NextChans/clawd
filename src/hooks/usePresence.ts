@@ -65,7 +65,10 @@ export function usePeers(): Peer[] {
       un.then((off) => off());
     };
   }, []);
-  return peers;
+  // Never render our own cat as a visitor. The Rust side already drops a
+  // self-echo, but filter here too so a stray loopback can't slip through.
+  const myId = getPeerId();
+  return peers.filter((p) => p.id !== myId);
 }
 
 /**
