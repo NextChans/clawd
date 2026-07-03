@@ -22,7 +22,17 @@ to drag, click, or configure it.
 
 ## Screenshots
 
-![clawd — a cat wandering your desktop](docs/screenshots/roam.png)
+**On your desktop** — the cat roams, its mood tracks your activity, and a tap shows a status tooltip.
+
+![clawd — a cat roaming the desktop with a status tooltip](docs/screenshots/roam.png)
+
+**Usage dashboard** — 5-hour session & weekly gauges, today/week/month tokens, and model · hourly · weekly-activity charts.
+
+![clawd — the usage dashboard with session gauges and charts](docs/screenshots/details.png)
+
+**Fishing play** — move a teaser wand with your cursor and the cat chases the dangling lure.
+
+![clawd — fishing (teaser wand) play](docs/screenshots/fishing.png)
 
 ---
 
