@@ -48,6 +48,10 @@ invite friends' cats over the **network**.
 - **🛋️ State-driven furniture** — a cushion (sleeping), cat tower (alert/angry),
   and food bowl (exhausted/feeding) appear on cue; the tower **evolves through
   three tiers** with daily usage.
+- **🐾 Furniture visits** — while it's up and about (curious / active / playing),
+  the cat also randomly trots over to a prop — cat tower, cushion, or bowl —
+  that fades in for the visit, plays there, then leaves, the same way it chases a
+  drifting plaything.
 - **🦋 Playthings** — a butterfly, ball, yarn, or bird drifts by and the cat
   chases (and pounces on) it.
 - **✨ Micro-events** — ear wiggles, look-backs, and hard blinks keep the resting
@@ -154,15 +158,17 @@ window, otherwise it falls back to opening the Releases page in your browser.
 | State       | When                                                        | Look                          |
 |-------------|-------------------------------------------------------------|-------------------------------|
 | `sleeping`  | **at night** (22:00–06:00) and idle > 15 min                | eyes closed, `z z z`, slow    |
-| `playing`   | very low / no rate — the daytime idle resting mood          | happy eyes, sparkle, fast tail|
-| `curious`   | rate > `low`                                                | wide eyes, `?`                |
+| `playing`   | the launch/greeting hello (and the night launch grace)      | happy eyes, sparkle, fast tail|
+| `curious`   | very low / no rate — the **daytime idle resting mood**      | wide eyes, `?`                |
 | `active`    | rate > `mid`, **or** session usage actively climbing        | open eyes, gentle smile       |
 | `alert`     | rate > `high`                                               | big eyes, raised ears, `!`    |
 | `angry`     | rate > `veryHigh`                                           | flat ears, fangs, hiss        |
 | `exhausted` | sustained high rate for ~30 min, **or** session ≥ 90%       | `><` eyes, sweat drop         |
 
 Mood is picked from whichever signal reads more intense. During the day an idle
-cat **plays** rather than sleeping; sleeping is reserved for a quiet night. The
+cat **pokes around (curious)** rather than sleeping — as your rate climbs past
+`mid / high / veryHigh` it steps up to active / alert / angry from there; `playing`
+is reserved for the launch greeting. Sleeping is reserved for a quiet night. The
 session-based conditions only apply when the (opt-in) session-usage integration
 is on.
 
@@ -424,6 +430,15 @@ clawd/
 
 ## Changelog
 
+- **v0.11.3** — **Curious is the daytime baseline.** An idle daytime cat now
+  rests as `curious` (기웃기웃) — poking around rather than the higher-energy
+  `playing` — and steps up to active/alert/angry as your usage climbs; `playing`
+  is kept for the launch greeting. Furniture visits fire in this resting mood
+  too (#35).
+- **v0.11.2** — **Furniture visits during play.** Beyond the mood-anchored
+  furniture, the cat now randomly trots over to a cat tower, cushion, or bowl
+  that fades in for the visit — the same "goes and plays with it" treatment as a
+  drifting plaything — so free roam feels less empty (#33).
 - **v0.11.1** — **Day/night rhythm + polish.** Naps only at night when idle and
   plays during the day, with a launch grace so it never opens already asleep
   (#26). Roaming now spreads across the whole screen instead of hugging the
