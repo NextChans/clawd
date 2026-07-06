@@ -1,8 +1,13 @@
 #!/usr/bin/env node
-// Sync the app version across the three files that carry it:
+// Sync the app version across the four files that carry it:
 //   - package.json            "version"
 //   - src-tauri/Cargo.toml     [package] version
 //   - src-tauri/tauri.conf.json "version"
+//   - src-tauri/Cargo.lock      [[package]] name = "clawd" version
+//
+// Cargo.lock matters because CI runs `cargo check --locked`: if the lockfile's
+// clawd version drifts from Cargo.toml, cargo refuses to build. The bump used
+// to skip it, which is why v0.12.1 CI failed.
 //
 // Usage: npm run version:bump 0.6.0
 //
@@ -49,5 +54,13 @@ patch("src-tauri/tauri.conf.json", /("version":\s*")\d+\.\d+\.\d+(")/, `$1${vers
 
 // Cargo.toml — the [package] version line (first `version = "..."`).
 patch("src-tauri/Cargo.toml", /(^version\s*=\s*")\d+\.\d+\.\d+(")/m, `$1${version}$2`);
+
+// Cargo.lock — the clawd package block's version. Anchored to `name = "clawd"`
+// so it never touches a dependency's version line.
+patch(
+  "src-tauri/Cargo.lock",
+  /(name = "clawd"\nversion = ")\d+\.\d+\.\d+(")/,
+  `$1${version}$2`,
+);
 
 console.log(`done. next:  git tag v${version} && git push --tags`);
