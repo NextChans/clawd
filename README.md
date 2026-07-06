@@ -1,5 +1,7 @@
 # 🐱 clawd
 
+[**English**](README.md) | [한국어](README.ko.md)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Latest Release](https://img.shields.io/github/v/release/NextChans/clawd)
 
@@ -20,6 +22,21 @@ invite friends' cats over the **network**.
   ( o.o )    token+cost aggregation, re-implemented in Rust), optionally
    > ^ <     reads your session/weekly limits, and maps it onto a 7-state cat.
 ```
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Install](#install) · [First run (Gatekeeper)](#first-run-gatekeeper)
+- [Concept](#concept) · [Cat states](#cat-states)
+- [Requirements](#requirements) · [Run](#run) · [Build](#build) · [Release process](#release-process)
+- [Permissions (macOS)](#permissions-macos)
+- [Usage](#usage) · [Tuning thresholds](#tuning-thresholds)
+- [Session usage (experimental)](#session-usage-experimental)
+- [Cat art & coat colors](#cat-art--coat-colors) · [How usage is computed](#how-usage-is-computed)
+- [Project layout](#project-layout) · [Known limitations](#known-limitations)
+- [Changelog](#changelog) · [Roadmap](#roadmap)
+- [Contributing](#contributing) · [Acknowledgments](#acknowledgments) · [License](#license)
 
 ## Screenshots
 
@@ -56,11 +73,9 @@ invite friends' cats over the **network**.
   chases (and pounces on) it.
 - **✨ Micro-events** — ear wiggles, look-backs, and hard blinks keep the resting
   cat alive.
-- **🌙 Time-of-day personality** — winds down and sleeps at night, stretches in
-  the morning.
-- **🌙 Day/night rhythm** — naps only at night when idle; during the day an idle
-  cat stays up and plays. A short launch grace means it never opens already
-  asleep.
+- **🌙 Day/night rhythm** — winds down and naps at night when idle, stretches in
+  the morning; during the day an idle cat stays up and plays. A short launch
+  grace means it never opens already asleep.
 - **🎣 Fishing play** — from the tray, wave a teaser wand with your cursor; the
   feather dangles on a string with real physics and the cat chases it. The
   overlay stays click-through, so other apps stay clickable while you play
@@ -620,6 +635,21 @@ especially.
 
 **Issues:** include your macOS version, how you installed (DMG vs. local build),
 and steps to reproduce. Feature ideas are welcome too — check the roadmap first.
+
+## Acknowledgments
+
+clawd stands on some excellent work:
+
+- **[Tauri](https://tauri.app)** — the Rust + WebView shell that makes a tiny,
+  native, frameless macOS app possible.
+- **[ccusage](https://github.com/ryoppippi/ccusage)** — the inspiration for the
+  local-log token/cost aggregation, re-implemented in Rust in `usage.rs`.
+- **[iroh](https://iroh.computer)** — QUIC P2P with relay fallback, powering the
+  remote invite-code rooms in Social mode.
+- **Nano Banana / Gemini** — used to generate the PNG cat sprites; see the
+  [art prompt](src/assets/cat/README.md).
+- **[Claude Code](https://docs.claude.com/en/docs/claude-code)** — the tool this
+  cat watches, and the one it was largely built with.
 
 ## License
 
