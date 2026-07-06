@@ -254,7 +254,7 @@ export default function App() {
         next === 'grab'
           ? '🖐️ 잡기 모드 ON'
           : next === 'fishing'
-            ? '🎣 낚시대 놀이! (Esc로 종료)'
+            ? '🎣 낚시대 놀이! (트레이에서 재클릭 시 종료)'
             : '🐾 놀기 모드',
       );
     });
@@ -427,7 +427,7 @@ export default function App() {
   }, [grab]);
 
   // Fishing play: the lure tracks the cursor and the cat eases after it every
-  // frame; Esc ends it. All movement is imperative so we never thrash React
+  // frame; the tray toggle ends it. All movement is imperative so we never thrash React
   // with per-frame state (only direction/gait/pounce flips, which are rare).
   useEffect(() => {
     if (!fishing) return;
@@ -528,8 +528,8 @@ export default function App() {
       fishRaf.current = null;
       setGait('idle');
       setPounce(false);
-      // Hand Rust the cat's final spot so wandering resumes from here (covers
-      // both Esc and the tray toggle-off, since both clear `fishing`).
+      // Hand Rust the cat's final spot so wandering resumes from here
+      // (the tray toggle-off clears `fishing`).
       invoke('report_cat_pos', { x: catXRef.current, y: catYRef.current }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
