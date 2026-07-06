@@ -85,10 +85,8 @@ invite friends' cats over the **network**.
 - **🔄 Auto-update** — checks GitHub Releases on launch and one-click installs a
   signed new build (falls back to opening the Releases page when unsigned).
 - **📏 Adjustable size** — a 50–200% character-size slider.
-- **🖥️ Multi-monitor wandering** — the overlay spans every display, so the cat
-  wanders freely across all of your screens (each screen's work area respected).
-  Spawns on the display your cursor is on; "이 화면으로 이동" re-homes it to the
-  current screen.
+- **🖥️ Multi-monitor** — spawns on the display your cursor is on; "이 화면으로
+  이동" re-homes it to the current screen.
 - **🚀 Auto-start** — optional macOS Login Item.
 - **🔒 Private by design** — no login and no network calls for local stats: it
   parses your `~/.claude` logs and nothing leaves your machine. The two opt-in
@@ -147,12 +145,11 @@ window, otherwise it falls back to opening the Releases page in your browser.
     drag to move it, click to open details. A glowing ring marks Grab mode.
   - Toggle with **⌘⇧C** or the tray. Roam ↔ Grab flips instantly; a short badge
     confirms the switch.
-- **Screen wandering** — in Roam mode the cat window is a click-through
-  **overlay spanning the union of every monitor**, and the cat strolls around
-  *inside* it via GPU-accelerated CSS transforms (60fps, no janky native window
-  moves). It **walks / runs** with an animated gait, flips to face its heading,
-  and roams across all displays — clamped to each monitor's work area (never
-  behind the menu bar or dock, never in the dead space between screens).
+- **Screen wandering** — in Roam mode the cat window is a full-screen,
+  transparent, click-through **overlay**, and the cat strolls around *inside* it
+  via GPU-accelerated CSS transforms (60fps, no janky native window moves). It
+  **walks / runs** with an animated gait, flips to face its heading, and is
+  clamped to the active monitor's work area (never behind the menu bar or dock).
   How lively it wanders tracks its mood: `playing` strolls, `active` dashes
   (running), `angry` fidgets in place, `exhausted` barely shuffles, `sleeping`
   stays put.
@@ -423,13 +420,11 @@ clawd/
   clearly; the other four states are lightweight variations. The walk / run /
   jitter gaits are an initial pass (body bob + alternating paws + tail) — good
   enough to read as motion, but ripe for refinement.
-- **Mixed-DPI multi-monitor is approximate.** The cat wanders across all
-  displays, but every screen's region is mapped through the overlay window's
-  single scale factor, so a display whose scale differs from the primary's is
-  positioned slightly off. Uniform-DPI setups (all Retina, or all not) are
-  exact. Straight-line hops between monitors briefly cross the dead space
-  between them; display-reconfiguration re-fit is best-effort (fires on the
-  next hop / DPI change).
+- **One monitor at a time.** The overlay spawns on the display your cursor is on
+  and can be re-homed with **tray → 이 화면으로 이동**, but it lives on a single
+  monitor — the cat won't wander across displays simultaneously, and automatic
+  re-homing on display reconfiguration is best-effort (fires on DPI/scale
+  changes).
 - The log scan re-reads all files every 30 s — fine for typical histories, but
   not incremental. Large histories could be cached by mtime later.
 - macOS only. Windows/Linux would need a different global-shortcut strategy.
@@ -437,12 +432,15 @@ clawd/
 
 ## Changelog
 
-- **v0.12.0** — **Multi-monitor wandering.** The cat overlay now spans the union
-  of all monitors instead of a single display. The cat wanders freely across
-  screens, clamped to each monitor's work area (menu bar / dock avoided). Dead
-  space between monitors is skipped; direct-line transitions across gaps briefly
-  cross the void without artifacts. Cursor-aware initial placement and "이 화면으로
-  이동" tray item both preserved.
+- **v0.12.3** — **Reverted multi-monitor changes.** v0.12.0 introduced
+  positioning regressions — the cat vanished when opening feed / fishing / grab,
+  flickered away on first launch, and disappeared intermittently — because the
+  union-bounds overlay coordinate system was misaligned. Reverted `lib.rs` /
+  `roam.rs` to the v0.11.7 single-display baseline; the cat is back to spawning
+  on the cursor's display with "이 화면으로 이동" re-homing. Multi-monitor
+  wandering will be re-attempted with a corrected coordinate system. (Also folds
+  in the v0.12.2 release-pipeline fix: `version:bump` now syncs `Cargo.lock` so
+  CI's `cargo check --locked` passes.)
 - **v0.11.7** — **Fishing play stays click-through.** Previously the fishing
   overlay captured the cursor, blocking clicks on other apps. Now the overlay
   stays click-through (like Roam) and the lure tracks the cursor via a Rust
@@ -590,10 +588,10 @@ clawd/
 - [x] Automated universal DMG releases (tag **or** `workflow_dispatch`)
 - [x] In-app **auto-update** with signed artifacts
 - [x] Adjustable character size · cursor-aware multi-monitor · auto-start
-- [x] Wander across **multiple monitors** simultaneously (overlay spans all)
 
 **Next up**
 
+- [ ] Wander across **multiple monitors** simultaneously (not just re-home)
 - [ ] Team dashboard — several cats splitting shared usage
 - [ ] A companion **CLI** (`clawd status`) for headless usage
 - [ ] Daily / weekly usage **summary card**

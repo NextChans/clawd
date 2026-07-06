@@ -295,13 +295,12 @@ pub fn do_feed(app: &AppHandle) -> bool {
     if state.is_roam() {
         if let Some(win) = app.get_webview_window("cat") {
             if let Some(wa) = workarea(&win) {
-                // The bowl sits on whichever monitor the cat is currently on.
-                let (px, py) = state
-                    .cat_pos()
-                    .unwrap_or_else(|| default_cat_pos(&wa.primary_region()));
-                let r = region_at(&wa.regions, px, py);
-                let bx = (r.x + 0.80 * r.w - CAT_SIZE / 2.0).clamp(r.min_x(), r.max_x());
-                let by = (r.y + r.h - CAT_SIZE - 6.0).clamp(r.min_y(), r.floor_y());
+                let (w, h) = wa.logical_size();
+                let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+                let bx = (0.80 * w - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
+                let by =
+                    (h - CAT_SIZE - 6.0).clamp(WANDER_MARGIN, (h - CAT_SIZE).max(WANDER_MARGIN));
+                let (px, py) = state.cat_pos().unwrap_or((bx, by));
                 let dist = ((bx - px).powi(2) + (by - py).powi(2)).sqrt();
                 let dur = ((dist / 190.0) * 1000.0).clamp(500.0, 3000.0) as u64;
                 let direction = if bx < px { "left" } else { "right" };
@@ -333,27 +332,26 @@ fn reset_position(app: AppHandle) {
         return;
     };
     let Some(wa) = workarea(&win) else { return };
-    let (x, y) = default_cat_pos(&cursor_region(&app, &wa));
+    let (x, y) = default_cat_pos(&wa);
     app.state::<AppState>().set_cat_pos(x, y);
     let _ = app.emit("cat-place", PlaceEvent { x, y });
 }
 
-/// Park the cat on the monitor the mouse is currently on. Forces Roam first (so
-/// the overlay is the full-screen click-through window) and re-fits it to the
-/// union of all monitors, then drops the cat at the cursor screen's default spot.
+/// Move the whole overlay to the monitor the mouse is currently on and park the
+/// cat at that screen's default corner. Forces Roam first (so the overlay is the
+/// full-screen click-through window) before re-fitting it to the cursor monitor.
 #[tauri::command]
 fn move_to_cursor_monitor(app: AppHandle) {
     apply_mode(&app, false);
     let Some(win) = app.get_webview_window("cat") else {
         return;
     };
-    let Some(wa) = workarea(&win) else {
+    // Prefer the cursor's monitor; fall back to the window's current one.
+    let Some(wa) = cursor_workarea(&app).or_else(|| workarea(&win)) else {
         return;
     };
-    // Re-fit the union overlay (covers monitor arrangement changes), then park
-    // the cat on the cursor's screen.
     expand_to_workarea(&win, &wa);
-    let (x, y) = default_cat_pos(&cursor_region(&app, &wa));
+    let (x, y) = default_cat_pos(&wa);
     app.state::<AppState>().set_cat_pos(x, y);
     let _ = app.emit("cat-place", PlaceEvent { x, y });
 }
@@ -367,7 +365,7 @@ fn get_cat_pos(app: AppHandle, state: tauri::State<'_, AppState>) -> (f64, f64) 
     }
     if let Some(win) = app.get_webview_window("cat") {
         if let Some(wa) = workarea(&win) {
-            let p = default_cat_pos(&cursor_region(&app, &wa));
+            let p = default_cat_pos(&wa);
             state.set_cat_pos(p.0, p.1);
             return p;
         }
@@ -425,190 +423,75 @@ fn apply_ignore_cursor(app: &AppHandle, ignore: bool) {
     }
 }
 
-/// A usable rectangle the cat may occupy — one per monitor work area (menu bar
-/// / dock excluded), expressed in **window-local logical (CSS) px** (0,0 = the
-/// overlay's top-left). The cat roams inside these; the dead space between them
-/// (monitor gaps, uneven arrangements) is skipped.
-#[derive(Clone, Copy)]
-pub(crate) struct Region {
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-}
-
-impl Region {
-    /// Left/top keep-out edge (inset by [`WANDER_MARGIN`]).
-    pub fn min_x(&self) -> f64 {
-        self.x + WANDER_MARGIN
-    }
-    pub fn min_y(&self) -> f64 {
-        self.y + WANDER_MARGIN
-    }
-    /// Right/bottom edge for the cat's *top-left* (leaves room for the sprite
-    /// plus the margin), never less than the corresponding min.
-    pub fn max_x(&self) -> f64 {
-        (self.x + self.w - CAT_SIZE - WANDER_MARGIN).max(self.min_x())
-    }
-    pub fn max_y(&self) -> f64 {
-        (self.y + self.h - CAT_SIZE - WANDER_MARGIN).max(self.min_y())
-    }
-    /// The region's bottom "floor" for ground props (below the usual margin).
-    pub fn floor_y(&self) -> f64 {
-        (self.y + self.h - CAT_SIZE).max(self.min_y())
-    }
-    /// Clamp a target top-left into this region's usable box.
-    pub fn clamp(&self, x: f64, y: f64) -> (f64, f64) {
-        (
-            x.clamp(self.min_x(), self.max_x()),
-            y.clamp(self.min_y(), self.max_y()),
-        )
-    }
-    /// Squared distance from `(x, y)` to this region's usable box — 0 when the
-    /// point already sits inside it.
-    fn dist2(&self, x: f64, y: f64) -> f64 {
-        let (cx, cy) = self.clamp(x, y);
-        (cx - x).powi(2) + (cy - y).powi(2)
-    }
-}
-
-/// The overlay's geometry: the window covers the **union** of every monitor's
-/// work area, and [`Self::regions`] holds each monitor's usable rect in
-/// window-local logical px. `origin`/`phys_*` are the union in physical px;
-/// `scale` is the window's representative scale factor (used to convert
-/// logical ↔ physical). A single-monitor setup collapses to one region and
-/// behaves exactly as before.
+/// The active monitor's work area (menu bar / dock excluded), in physical px,
+/// plus its scale factor. Falls back to the primary monitor.
 pub(crate) struct WorkArea {
     pub origin_x: i32,
     pub origin_y: i32,
     pub phys_w: u32,
     pub phys_h: u32,
     pub scale: f64,
-    pub regions: Vec<Region>,
 }
 
 impl WorkArea {
-    /// The first region, as a stable fallback for placement.
-    pub fn primary_region(&self) -> Region {
-        self.regions.first().copied().unwrap_or(Region {
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
-        })
+    /// Window size in logical (CSS) px — what the frontend sees.
+    pub fn logical_size(&self) -> (f64, f64) {
+        (
+            self.phys_w as f64 / self.scale,
+            self.phys_h as f64 / self.scale,
+        )
+    }
+
+    fn from_monitor(monitor: &tauri::Monitor) -> Self {
+        let wa = monitor.work_area();
+        WorkArea {
+            origin_x: wa.position.x,
+            origin_y: wa.position.y,
+            phys_w: wa.size.width,
+            phys_h: wa.size.height,
+            scale: monitor.scale_factor(),
+        }
     }
 }
 
-/// Compute the overlay geometry across **all** monitors: the union of every
-/// monitor's work area (for the window bounds) plus each work area as a
-/// window-local [`Region`]. Falls back to the current/primary monitor if the
-/// full list is unavailable.
-///
-/// Mixed-DPI caveat: every region is converted with the window's single
-/// representative scale, so a screen whose scale differs from the window's is
-/// mapped slightly off. Uniform-DPI setups (the common case) are exact.
+/// Work area of the monitor the cat window currently sits on (falls back to the
+/// primary). Used once the overlay is placed, so all geometry stays on one
+/// screen.
 pub(crate) fn workarea(win: &WebviewWindow) -> Option<WorkArea> {
-    let monitors = win
-        .available_monitors()
+    let monitor = win
+        .current_monitor()
         .ok()
-        .filter(|m| !m.is_empty())
-        .or_else(|| win.current_monitor().ok().flatten().map(|m| vec![m]))
-        .or_else(|| win.primary_monitor().ok().flatten().map(|m| vec![m]))?;
+        .flatten()
+        .or_else(|| win.primary_monitor().ok().flatten())?;
+    Some(WorkArea::from_monitor(&monitor))
+}
 
-    let scale = win
-        .scale_factor()
+/// Work area of the monitor under the mouse cursor (falls back to the primary).
+/// Multi-monitor placement: on launch and on "이 화면으로 이동" we drop the
+/// overlay onto whichever screen the user is actually looking at.
+pub(crate) fn cursor_workarea(app: &AppHandle) -> Option<WorkArea> {
+    let monitor = app
+        .cursor_position()
         .ok()
-        .or_else(|| monitors.first().map(|m| m.scale_factor()))
-        .unwrap_or(1.0);
-
-    // Union over each monitor's work area (physical px).
-    let mut min_x = i32::MAX;
-    let mut min_y = i32::MAX;
-    let mut max_x = i32::MIN;
-    let mut max_y = i32::MIN;
-    for m in &monitors {
-        let wa = m.work_area();
-        min_x = min_x.min(wa.position.x);
-        min_y = min_y.min(wa.position.y);
-        max_x = max_x.max(wa.position.x + wa.size.width as i32);
-        max_y = max_y.max(wa.position.y + wa.size.height as i32);
-    }
-    if min_x > max_x || min_y > max_y {
-        return None;
-    }
-
-    // Each work area, offset into the union origin and converted to logical px.
-    let regions = monitors
-        .iter()
-        .map(|m| {
-            let wa = m.work_area();
-            Region {
-                x: (wa.position.x - min_x) as f64 / scale,
-                y: (wa.position.y - min_y) as f64 / scale,
-                w: wa.size.width as f64 / scale,
-                h: wa.size.height as f64 / scale,
-            }
-        })
-        .collect();
-
-    Some(WorkArea {
-        origin_x: min_x,
-        origin_y: min_y,
-        phys_w: (max_x - min_x) as u32,
-        phys_h: (max_y - min_y) as u32,
-        scale,
-        regions,
-    })
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    Some(WorkArea::from_monitor(&monitor))
 }
 
-/// The region containing `(x, y)`, or the nearest one when the point sits in the
-/// dead space between monitors. Never panics (falls back to a zero region).
-pub(crate) fn region_at(regions: &[Region], x: f64, y: f64) -> Region {
-    regions
-        .iter()
-        .copied()
-        .min_by(|a, b| {
-            a.dist2(x, y)
-                .partial_cmp(&b.dist2(x, y))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .unwrap_or(Region {
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
-        })
-}
-
-/// Clamp a target into the nearest usable region, so the cat never lands in the
-/// dead space between monitors or behind a menu bar / dock.
-pub(crate) fn clamp_to_regions(regions: &[Region], x: f64, y: f64) -> (f64, f64) {
-    region_at(regions, x, y).clamp(x, y)
-}
-
-/// The region under the mouse cursor (window-local), for placement on launch and
-/// on "이 화면으로 이동". Falls back to the first region.
-fn cursor_region(app: &AppHandle, wa: &WorkArea) -> Region {
-    if let Ok(pos) = app.cursor_position() {
-        let lx = (pos.x - wa.origin_x as f64) / wa.scale;
-        let ly = (pos.y - wa.origin_y as f64) / wa.scale;
-        return region_at(&wa.regions, lx, ly);
-    }
-    wa.primary_region()
-}
-
-/// Default resting spot within a region: near the top, right-of-center (~60%
-/// width) rather than jammed in the corner — so the cat isn't cramped against
-/// the edge and its greeting/onboarding bubbles have room without clipping.
-pub(crate) fn default_cat_pos(r: &Region) -> (f64, f64) {
+/// Default resting spot: near the top, right-of-center (~60% width) rather than
+/// jammed in the corner — so the cat isn't cramped against the edge and its
+/// greeting/onboarding bubbles have room to sit without clipping off-screen.
+pub(crate) fn default_cat_pos(wa: &WorkArea) -> (f64, f64) {
+    let (w, _) = wa.logical_size();
+    let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
     (
-        (r.x + (r.w - CAT_SIZE) * 0.6).clamp(r.min_x(), r.max_x()),
-        r.min_y(),
+        ((w - CAT_SIZE) * 0.6).clamp(WANDER_MARGIN, max_x),
+        WANDER_MARGIN,
     )
 }
 
-/// Blow the window up to cover the whole union work area (Roam overlay).
-pub(crate) fn expand_to_workarea(win: &WebviewWindow, wa: &WorkArea) {
+/// Blow the window up to cover the whole work area (Roam overlay).
+fn expand_to_workarea(win: &WebviewWindow, wa: &WorkArea) {
     let _ = win.set_size(PhysicalSize::new(wa.phys_w, wa.phys_h));
     let _ = win.set_position(PhysicalPosition::new(wa.origin_x, wa.origin_y));
 }
@@ -632,13 +515,15 @@ fn enter_roam_window(app: &AppHandle, win: &WebviewWindow) {
 
     expand_to_workarea(win, &wa);
 
+    let (w, h) = wa.logical_size();
+    let max_x = (w - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+    let max_y = (h - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
     let (nx, ny) = match screen {
-        Some((sx, sy)) => clamp_to_regions(
-            &wa.regions,
-            (sx - wa.origin_x as f64) / scale,
-            (sy - wa.origin_y as f64) / scale,
+        Some((sx, sy)) => (
+            ((sx - wa.origin_x as f64) / scale).clamp(WANDER_MARGIN, max_x),
+            ((sy - wa.origin_y as f64) / scale).clamp(WANDER_MARGIN, max_y),
         ),
-        None => default_cat_pos(&cursor_region(app, &wa)),
+        None => default_cat_pos(&wa),
     };
 
     app.state::<AppState>().set_cat_pos(nx, ny);
@@ -737,10 +622,10 @@ fn setup_overlay(app: &AppHandle) {
     let Some(win) = app.get_webview_window("cat") else {
         return;
     };
-    // Expand across all monitors; start the cat on the screen the cursor is on.
-    if let Some(wa) = workarea(&win) {
+    // Start on the monitor the cursor is on rather than always the primary.
+    if let Some(wa) = cursor_workarea(app).or_else(|| workarea(&win)) {
         expand_to_workarea(&win, &wa);
-        let (x, y) = default_cat_pos(&cursor_region(app, &wa));
+        let (x, y) = default_cat_pos(&wa);
         app.state::<AppState>().set_cat_pos(x, y);
     }
     apply_ignore_cursor(app, true);
