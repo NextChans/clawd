@@ -218,12 +218,6 @@ export default function App() {
     invoke('enter_grab', { x: r.left, y: r.top }).catch(() => {});
   };
 
-  // Leave fishing play (Rust flips the mode back to roam via `mode-change`;
-  // the loop's teardown reports the cat's final position).
-  const exitFishing = () => {
-    invoke('exit_fishing').catch(() => {});
-  };
-
   // Initial paint: place the cat where Rust says it is.
   useEffect(() => {
     invoke<[number, number]>('get_cat_pos')
@@ -448,14 +442,12 @@ export default function App() {
     featherRef.current = { x: tipRef.current.x, y: tipRef.current.y + STRING_LEN };
     featherVelRef.current = { x: 0, y: 0 };
 
-    const onMove = (e: PointerEvent) => {
-      tipRef.current = { x: e.clientX, y: e.clientY };
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') exitFishing();
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('keydown', onKey);
+    // The overlay is click-through, so the WebView never sees `pointermove`.
+    // Rust polls the OS cursor at 60fps and hands us the window-local position
+    // via `fishing-cursor`; that drives the rod tip. Other apps stay clickable.
+    const unlisten = listen<[number, number]>('fishing-cursor', (e) => {
+      tipRef.current = { x: e.payload[0], y: e.payload[1] };
+    });
 
     const el = containerRef.current;
     if (el) el.style.transition = 'none'; // per-frame transform, no CSS tween
@@ -531,8 +523,7 @@ export default function App() {
     fishRaf.current = requestAnimationFrame(step);
 
     return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('keydown', onKey);
+      unlisten.then((off) => off());
       if (fishRaf.current !== null) cancelAnimationFrame(fishRaf.current);
       fishRaf.current = null;
       setGait('idle');
@@ -817,7 +808,8 @@ export default function App() {
 
       {/* Fishing (teaser) play: a string from the corner to a lure that tracks
           the cursor. Purely visual — movement is driven imperatively by the rAF
-          loop above; the window itself captures the cursor (Rust). */}
+          loop above; the cursor position arrives via Rust's `fishing-cursor`
+          poll (the overlay stays click-through, so no pointer events here). */}
       {fishing && (
         <div className="fishing-layer" aria-hidden>
           <svg className="fishing-string" width="100%" height="100%">
@@ -847,7 +839,7 @@ export default function App() {
             <FishingRod />
           </div>
           <div className="fishing-hint">
-            🎣 마우스로 낚싯대를 움직여 고양이랑 놀아주세요 · <b>Esc</b>로 종료
+            🎣 마우스로 낚싯대를 움직여 고양이랑 놀아주세요 · 트레이 메뉴에서 <b>🎣 낚시대 놀이</b> 재클릭으로 종료
           </div>
         </div>
       )}

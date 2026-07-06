@@ -62,8 +62,9 @@ invite friends' cats over the **network**.
   cat stays up and plays. A short launch grace means it never opens already
   asleep.
 - **🎣 Fishing play** — from the tray, wave a teaser wand with your cursor; the
-  feather dangles on a string with real physics and the cat chases it (Esc to
-  end).
+  feather dangles on a string with real physics and the cat chases it. The
+  overlay stays click-through, so other apps stay clickable while you play
+  (re-click the tray item to end).
 - **🍚 Feeding & 🖐️ petting** — feed from the tray (the cat trots to its bowl);
   hover/hold it in Grab mode for a purr.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
@@ -270,9 +271,9 @@ for an Option-key hold; that was removed — see the changelog.)
 - **Tray menu** → the cat's home base:
   - **🐾 놀기 (Roam) / 🖐️ 잡기 (Grab)** — switch modes.
   - **🎣 낚시대 놀이** — start fishing play (move your cursor to wave the wand;
-    **Esc** or click the item again to stop). While playing, the full-screen
-    overlay captures the cursor, so other apps aren't clickable — it's a
-    deliberate play session.
+    click the item again to stop). The overlay stays click-through while you
+    play, so other apps remain clickable — the lure tracks the cursor via a Rust
+    60fps poll rather than by capturing pointer events.
   - **🍚 먹이 주기** — feed the cat (it trots to its bowl; 60 s cooldown).
   - Show/hide the cat, reset position, **이 화면으로 이동** (move to the current
     screen), **상세 · 설정…** (details/settings), check for updates, quit.
@@ -431,6 +432,12 @@ clawd/
 
 ## Changelog
 
+- **v0.11.7** — **Fishing play stays click-through.** Previously the fishing
+  overlay captured the cursor, blocking clicks on other apps. Now the overlay
+  stays click-through (like Roam) and the lure tracks the cursor via a Rust
+  60fps polling + `fishing-cursor` event pipeline. Other apps remain interactive
+  throughout. End the session from the tray menu (Esc removed — the overlay no
+  longer receives key events).
 - **v0.11.6** — **Remote-room polish.** The nickname field was hidden unless LAN
   presence ("네트워크에서 친구 초대") was on, but remote rooms broadcast the
   nickname too — so remote-only users were stuck with a generated `cat-1234`

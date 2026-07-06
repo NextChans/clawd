@@ -128,6 +128,11 @@ pub struct AppState {
     /// When the cat was last fed. Drives the feed cooldown and the brief
     /// Roam-mode "linger at the bowl" hold (`roam.rs`).
     last_feed: Mutex<Option<Instant>>,
+    /// The 60fps cursor-polling task that runs while fishing. The overlay stays
+    /// click-through (so other apps stay clickable), so the WebView can't see
+    /// `pointermove`; this task reads the OS cursor and emits `fishing-cursor`
+    /// with the window-local position instead. Aborted when fishing ends.
+    fishing_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
 impl Default for AppState {
@@ -138,6 +143,7 @@ impl Default for AppState {
             cat_state: Mutex::new(DEFAULT_CAT_STATE.to_string()),
             cat_pos: Mutex::new(None),
             last_feed: Mutex::new(None),
+            fishing_task: Mutex::new(None),
         }
     }
 }
@@ -223,8 +229,9 @@ fn enter_fishing(app: AppHandle) {
     apply_fishing(&app, true);
 }
 
-/// End teaser play (Esc). Position is synced separately via `report_cat_pos`
-/// when the frontend's fishing loop tears down, so this just flips the mode.
+/// End teaser play (from the tray toggle). Position is synced separately via
+/// `report_cat_pos` when the frontend's fishing loop tears down, so this just
+/// flips the mode.
 #[tauri::command]
 fn exit_fishing(app: AppHandle) {
     apply_fishing(&app, false);
@@ -551,30 +558,58 @@ pub fn apply_mode(app: &AppHandle, grab: bool) {
 }
 
 /// Enter or leave fishing (teaser) play. Entering keeps the full-screen overlay
-/// but stops it being click-through so the lure can follow the cursor, and
-/// freezes the wander loop; the frontend then drives the cat to chase the lure.
-/// Leaving re-arms click-through and resumes wandering from where the cat was
+/// *click-through* (like Roam) so other apps stay clickable throughout, and
+/// freezes the wander loop; a 60fps task then polls the OS cursor and emits
+/// `fishing-cursor` so the frontend can trail the lure and drive the cat after
+/// it. Leaving aborts that task and resumes wandering from where the cat was
 /// left. Broadcasts `mode-change` (`"fishing"` / `"roam"`) and syncs the tray.
 pub fn apply_fishing(app: &AppHandle, on: bool) {
     let st = app.state::<AppState>();
+    // Always tear down any prior polling task first (covers rapid re-toggles).
+    if let Some(handle) = st.fishing_task.lock().unwrap().take() {
+        handle.abort();
+    }
     if on {
         st.grabbed.store(false, Ordering::SeqCst);
         st.fishing.store(true, Ordering::SeqCst);
         if let Some(win) = app.get_webview_window("cat") {
             // Make sure we're a full-screen overlay (we may be coming from the
-            // small Grab window), then capture the cursor so the lure follows it.
+            // small Grab window). Stay click-through: the lure follows the OS
+            // cursor via the polling task below, not captured pointer events, so
+            // clicks pass through to whatever's underneath.
             enter_roam_window(app, &win);
-            let _ = win.set_ignore_cursor_events(false);
+            let _ = win.set_ignore_cursor_events(true);
         }
+        // 60fps cursor poll → `fishing-cursor` (window-local CSS px). This is the
+        // click-through-safe replacement for the WebView's `pointermove`, which
+        // an ignore-cursor overlay never receives.
+        let app_c = app.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(16));
+            loop {
+                interval.tick().await;
+                let Some(win) = app_c.get_webview_window("cat") else {
+                    continue;
+                };
+                if let (Ok(pos), Ok(origin)) = (app_c.cursor_position(), win.outer_position()) {
+                    let scale = win.scale_factor().unwrap_or(1.0);
+                    let local_x = (pos.x - origin.x as f64) / scale;
+                    let local_y = (pos.y - origin.y as f64) / scale;
+                    let _ = win.emit("fishing-cursor", (local_x, local_y));
+                }
+            }
+        });
+        *st.fishing_task.lock().unwrap() = Some(handle);
         let _ = app.emit("mode-change", "fishing");
         tray::update_mode_str(app, "fishing");
     } else {
         st.fishing.store(false, Ordering::SeqCst);
-        // Re-arm click-through so the overlay stops blocking the desktop. We
-        // deliberately *don't* emit `cat-place`: the frontend drove the cat
-        // during play and keeps it exactly where it is (a `cat-place` would snap
-        // it to the stale pre-fishing spot). The frontend reports its final
-        // position via `report_cat_pos` as its fishing loop tears down.
+        // Overlay was already click-through during play, so nothing to re-arm
+        // (kept here for symmetry / safety). We deliberately *don't* emit
+        // `cat-place`: the frontend drove the cat during play and keeps it
+        // exactly where it is (a `cat-place` would snap it to the stale
+        // pre-fishing spot). The frontend reports its final position via
+        // `report_cat_pos` as its fishing loop tears down.
         apply_ignore_cursor(app, true);
         let _ = app.emit("mode-change", "roam");
         tray::update_mode_str(app, "roam");
