@@ -19,8 +19,7 @@ use chrono::{Local, Timelike};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
-    AppState, FurnitureEvent, PlaythingEvent, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD,
-    WANDER_MARGIN,
+    AppState, FurnitureEvent, PlaythingEvent, Region, SubEvent, WanderEvent, CAT_SIZE, FEED_HOLD,
 };
 
 /// Poll cadence. We only schedule hops (not animate), so a lazy tick is plenty.
@@ -68,9 +67,9 @@ const ANCHOR_SNAP: f64 = 24.0;
 ///                         the way of your work).
 ///  - `alert` / `angry`  → perch on the cat-tower platform (left, lifted).
 ///  - `exhausted`        → slump by the food bowl (right).
-fn anchor_pos(state: &str, w: f64, h: f64) -> Option<(f64, f64)> {
-    let ground_y = h - CAT_SIZE - FURN_GROUND;
-    let center = |frac: f64| frac * w - CAT_SIZE / 2.0;
+fn anchor_pos(state: &str, r: &Region) -> Option<(f64, f64)> {
+    let ground_y = r.y + r.h - CAT_SIZE - FURN_GROUND;
+    let center = |frac: f64| r.x + frac * r.w - CAT_SIZE / 2.0;
     match state {
         "sleeping" => Some((center(0.88), ground_y)),
         "alert" | "angry" => Some((center(0.20), ground_y - TOWER_LIFT)),
@@ -403,27 +402,20 @@ struct PlayPlan {
 ///  - `yarn`: dangles just in front of the cat, which bats at it in place.
 ///  - `bird`: swoops across the top and exits the far side (out of reach); the
 ///    cat dashes toward the middle, but the bird gets away.
-#[allow(clippy::too_many_arguments)]
-fn plaything_plan(
-    kind: &str,
-    rng: &mut Rng,
-    px: f64,
-    py: f64,
-    w_log: f64,
-    h_log: f64,
-    max_x: f64,
-    max_y: f64,
-) -> PlayPlan {
-    let clamp_x = |x: f64| x.clamp(WANDER_MARGIN, max_x);
-    let clamp_y = |y: f64| y.clamp(WANDER_MARGIN, max_y);
+fn plaything_plan(kind: &str, rng: &mut Rng, px: f64, py: f64, r: &Region) -> PlayPlan {
+    let (min_x, max_x) = (r.min_x(), r.max_x());
+    let (min_y, max_y) = (r.min_y(), r.max_y());
+    let (w_log, h_log) = (r.w, r.h);
+    let clamp_x = |x: f64| x.clamp(min_x, max_x);
+    let clamp_y = |y: f64| y.clamp(min_y, max_y);
     // Ground props (ball) can sit below the usual wander margin.
-    let ground = |y: f64| y.clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+    let ground = |y: f64| y.clamp(min_y, r.floor_y());
 
     match kind {
         "ball" => {
             let from_left = rng.unit() < 0.5;
-            let start_x = if from_left { WANDER_MARGIN } else { max_x };
-            let end_x = if from_left { max_x } else { WANDER_MARGIN };
+            let start_x = if from_left { min_x } else { max_x };
+            let end_x = if from_left { max_x } else { min_x };
             let y = ground(py + CAT_SIZE * 0.45);
             let dur = rng.range(1800.0, 2800.0) as u64;
             // Throw the ball first, then chase. The ball rolls the full width
@@ -454,7 +446,7 @@ fn plaything_plan(
         }
         "yarn" => {
             // Dangle to whichever side has more room, in front of the cat.
-            let side = if px < w_log * 0.5 { 1.0 } else { -1.0 };
+            let side = if px < r.x + w_log * 0.5 { 1.0 } else { -1.0 };
             let bx = clamp_x(px + CAT_SIZE * 0.55 * side);
             let by = clamp_y(py + CAT_SIZE * 0.2);
             let tx = clamp_x(bx + rng.range(-24.0, 24.0));
@@ -474,9 +466,9 @@ fn plaything_plan(
         }
         "bird" => {
             let from_left = rng.unit() < 0.5;
-            let start_x = if from_left { WANDER_MARGIN } else { max_x };
-            let end_x = if from_left { max_x } else { WANDER_MARGIN };
-            let top_y = WANDER_MARGIN;
+            let start_x = if from_left { min_x } else { max_x };
+            let end_x = if from_left { max_x } else { min_x };
+            let top_y = min_y;
             let dur = rng.range(2800.0, 4000.0) as u64;
             // Dash toward the middle, following the fly-over — but it escapes.
             let mid_x = clamp_x((start_x + end_x) / 2.0);
@@ -560,13 +552,34 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
     let Some(wa) = crate::workarea(&win) else {
         return;
     };
-    let (w_log, h_log) = wa.logical_size();
-    let max_x = (w_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
-    let max_y = (h_log - CAT_SIZE - WANDER_MARGIN).max(WANDER_MARGIN);
+    let regions = &wa.regions;
+    if regions.is_empty() {
+        return;
+    }
+
+    // Best-effort multi-monitor upkeep: if a display was connected / disconnected
+    // / rearranged since the last hop, the union bounds no longer match the
+    // window — re-fit it so the cat can reach the new geometry. Runs at hop
+    // cadence (not every tick), and only when there's an actual mismatch.
+    if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
+        if pos.x != wa.origin_x
+            || pos.y != wa.origin_y
+            || size.width != wa.phys_w
+            || size.height != wa.phys_h
+        {
+            crate::expand_to_workarea(&win, &wa);
+        }
+    }
 
     let (px, py) = state
         .cat_pos()
-        .unwrap_or_else(|| crate::default_cat_pos(&wa));
+        .unwrap_or_else(|| crate::default_cat_pos(&wa.primary_region()));
+
+    // The monitor the cat is currently on (or nearest, if it's in dead space).
+    // Anchored props, furniture visits, playthings and local hops are all sized
+    // to this region; only the occasional cross-monitor hop leaves it.
+    let cur = crate::region_at(regions, px, py);
+    let (w_log, h_log) = (cur.w, cur.h);
 
     // Playful moods occasionally spawn a plaything (butterfly / ball / yarn /
     // bird) instead of a plain hop. Each kind has its own motion pattern and
@@ -577,7 +590,7 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
     {
         let tod = time_of_day();
         let kind = pick_plaything(rng, tod);
-        let plan = plaything_plan(kind, rng, px, py, w_log, h_log, max_x, max_y);
+        let plan = plaything_plan(kind, rng, px, py, &cur);
 
         let _ = app.emit(
             "cat-plaything",
@@ -642,14 +655,14 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
             1 => ("cushion", 0.88, false),
             _ => ("bowl", 0.80, false),
         };
-        let ground_y = h_log - CAT_SIZE - FURN_GROUND;
-        let fx = (frac * w_log - CAT_SIZE / 2.0).clamp(WANDER_MARGIN, max_x);
+        let ground_y = cur.y + h_log - CAT_SIZE - FURN_GROUND;
+        let fx = (cur.x + frac * w_log - CAT_SIZE / 2.0).clamp(cur.min_x(), cur.max_x());
         let fy = (if lifted {
             ground_y - TOWER_LIFT
         } else {
             ground_y
         })
-        .clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+        .clamp(cur.min_y(), cur.floor_y());
         let dist = ((fx - px).powi(2) + (fy - py).powi(2)).sqrt();
         let travel = ((dist / 190.0) * 1000.0).clamp(500.0, 4500.0) as u64;
         let linger = (rng.range(FURN_LINGER_S.0, FURN_LINGER_S.1) * 1000.0) as u64;
@@ -686,9 +699,9 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
     // furniture instead of free roaming. Ground props can sit lower than the
     // usual wander margin (the baseline is inside the work area), so `ay` clamps
     // against the screen bottom, not `max_y`.
-    if let Some((ax, ay)) = anchor_pos(&cat_state, w_log, h_log) {
-        let ax = ax.clamp(WANDER_MARGIN, max_x);
-        let ay = ay.clamp(WANDER_MARGIN, (h_log - CAT_SIZE).max(WANDER_MARGIN));
+    if let Some((ax, ay)) = anchor_pos(&cat_state, &cur) {
+        let ax = ax.clamp(cur.min_x(), cur.max_x());
+        let ay = ay.clamp(cur.min_y(), cur.floor_y());
         let dist = ((ax - px).powi(2) + (ay - py).powi(2)).sqrt();
 
         if dist > ANCHOR_SNAP {
@@ -718,8 +731,8 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
         // Arrived. Angry keeps fidgeting in place; the other anchored moods
         // settle and hold (the frontend then shows the resting pose by mood).
         if cat_state == "angry" {
-            let tx = (ax + rng.range(-16.0, 16.0)).clamp(WANDER_MARGIN, max_x);
-            let ty = (ay + rng.range(-10.0, 10.0)).clamp(WANDER_MARGIN, max_y);
+            let tx = (ax + rng.range(-16.0, 16.0)).clamp(cur.min_x(), cur.max_x());
+            let ty = (ay + rng.range(-10.0, 10.0)).clamp(cur.min_y(), cur.max_y());
             let dur_ms = rng.range(150.0, 320.0) as u64;
             let _ = app.emit(
                 "cat-wander",
@@ -747,32 +760,31 @@ fn tick(app: &AppHandle, rng: &mut Rng, sched: &mut Sched) {
         return;
     };
 
-    // Pick a target: a directed hop, or a small in-place twitch (angry).
+    // Pick a target: a directed hop, or a small in-place twitch (angry). The
+    // raw target is clamped to the nearest usable region afterward, so it always
+    // lands on a real screen and never in the dead space between monitors.
     let (tx, ty) = if p.jitter {
-        (
-            (px + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_x),
-            (py + rng.range(-30.0, 30.0)).clamp(WANDER_MARGIN, max_y),
-        )
+        (px + rng.range(-30.0, 30.0), py + rng.range(-30.0, 30.0))
     } else if rng.unit() < 0.2 {
-        // Every so often, trot to a fresh spot anywhere in the work area, so the
-        // cat roams the whole width instead of lingering near where it started
-        // (the default top-right corner) — a plain relative walk drifts across a
-        // wide screen only very slowly.
+        // Every so often, trot to a fresh spot on *some* monitor — picked at
+        // random across all of them, so the cat roams the whole desk (and hops
+        // between screens) instead of lingering near where it started.
+        let idx = ((rng.unit() * regions.len() as f64) as usize).min(regions.len() - 1);
+        let tr = &regions[idx];
         (
-            rng.range(WANDER_MARGIN, max_x),
-            rng.range(WANDER_MARGIN, max_y),
+            rng.range(tr.min_x(), tr.max_x()),
+            rng.range(tr.min_y(), tr.max_y()),
         )
     } else {
         // Local mosey. Scale the step per axis (width for x, height for y) so
         // hops cover a wide screen horizontally instead of being capped by the
-        // shorter (usually vertical) dimension.
+        // shorter (usually vertical) dimension. Sized to the current monitor; a
+        // step that spills over an edge clamps into the adjacent screen.
         let dist = rng.range(p.dist.0, p.dist.1);
         let angle = rng.range(0.0, std::f64::consts::TAU);
-        (
-            (px + angle.cos() * dist * w_log).clamp(WANDER_MARGIN, max_x),
-            (py + angle.sin() * dist * h_log).clamp(WANDER_MARGIN, max_y),
-        )
+        (px + angle.cos() * dist * w_log, py + angle.sin() * dist * h_log)
     };
+    let (tx, ty) = crate::clamp_to_regions(regions, tx, ty);
 
     let dur_ms = rng.range(p.dur.0, p.dur.1) as u64;
     let direction = if tx < px { "left" } else { "right" };
