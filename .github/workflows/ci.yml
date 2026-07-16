@@ -1,10 +1,11 @@
 name: CI
 
-# Compile-check every branch push and PR on a macOS runner — the app only
-# builds on macOS (Tauri needs the platform webview), so this is where a
-# `cargo check` + frontend type-check/build can actually validate a change.
-# Release builds live in release.yml and fire only on `v*` tags; this never
-# runs on tags, so the two don't overlap.
+# Compile-check every branch push and PR. clawd ships on macOS and Windows, so
+# we check both: Tauri needs each platform's native webview to build, and the
+# credential-store backend is target-specific (Keychain vs Credential Manager),
+# so a macOS-only check would miss Windows breakage (and vice-versa). Release
+# builds live in release.yml and fire only on `v*` tags; this never runs on
+# tags, so the two don't overlap.
 on:
   push:
     branches: ['**']
@@ -17,7 +18,11 @@ concurrency:
 
 jobs:
   build-check:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

@@ -1,7 +1,7 @@
 [package]
 name = "clawd"
 version = "0.12.3"
-description = "Cute floating cat that shows Claude Code usage on macOS"
+description = "Cute floating cat that shows Claude Code usage on macOS and Windows"
 authors = ["chani"]
 edition = "2021"
 license = "MIT"
@@ -45,7 +45,16 @@ anyhow = "1"
 # Anthropic Messages API (we read rate-limit headers off the response) and the
 # OS keychain for the OAuth token, so it never touches the config store.
 reqwest = { version = "0.12", features = ["json"] }
+
+# OS credential store for the optional session-usage OAuth token. The backend is
+# platform-native so the feature must be picked per target: Keychain on macOS,
+# Credential Manager on Windows. `session.rs` uses the same `keyring::Entry` API
+# on both, so nothing downstream changes.
+[target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"

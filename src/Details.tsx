@@ -246,7 +246,7 @@ export default function Details() {
             <p className="d-session-help">
               Claude Code OAuth 토큰(<code>claude setup-token</code> → <code>sk-ant-oat01…</code>)을
               넣으면 5시간 세션·주간 사용률이 맨 위에 표시되고, 사용 중일 때 고양이가 깨어 있어요.
-              토큰은 macOS 키체인에 저장됩니다.
+              토큰은 OS 자격 증명 저장소(macOS 키체인 / Windows 자격 증명 관리자)에 저장됩니다.
             </p>
             <div className="d-session-actions">
               <input
@@ -434,7 +434,7 @@ export default function Details() {
       {/* ── 시스템 ── */}
       <section className="d-group">
         <h3 className="d-group-title">시스템</h3>
-        <label className="d-toggle" title="macOS 로그인 시 clawd를 자동 실행합니다">
+        <label className="d-toggle" title="로그인 시 clawd를 자동 실행합니다">
           <span className="d-toggle-label">로그인 시 자동 시작</span>
           <button
             type="button"

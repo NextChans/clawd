@@ -95,7 +95,8 @@ export const CAT_SCALE_DEFAULT = 1.0;
 export interface Config {
   thresholds: Thresholds;
   catColor: CatColor;
-  /** Whether the app registers a macOS LaunchAgent to start at login. Opt-in:
+  /** Whether the app registers to start at login (macOS LaunchAgent / Windows
+   * registry Run key). Opt-in:
    * defaults to `false` so a fresh install never auto-registers. The autostart
    * plugin is the source of truth (`isEnabled()`); this mirrors it for the UI. */
   autostart: boolean;

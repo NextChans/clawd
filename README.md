@@ -113,10 +113,16 @@ invite friends' cats over the **network**.
 
 ## Install
 
-Grab the latest **`.dmg`** from the
+**macOS** — grab the latest **`.dmg`** from the
 [**Releases**](https://github.com/NextChans/clawd/releases) page, open it, and
 drag **clawd.app** into `/Applications`. The build is a **universal binary**
 (Apple Silicon + Intel).
+
+**Windows** — grab the latest **`-setup.exe`** (NSIS) from the same
+[**Releases**](https://github.com/NextChans/clawd/releases) page and run it (a
+per-user install, no admin needed). An `.msi` is also published if you prefer
+it. See [docs/windows-support.md](docs/windows-support.md) for details and
+current caveats.
 
 > The `.dmg` is **not code-signed or notarized** (no Apple Developer account),
 > so macOS Gatekeeper will complain on first launch — see below.
@@ -191,14 +197,17 @@ is on.
 
 ## Requirements
 
-- **macOS** (built and tuned for macOS).
+- **macOS or Windows** (built and tuned for both). See
+  [docs/windows-support.md](docs/windows-support.md) for the Windows specifics.
 - **Node ≥ 20** — `node --version`
 - **Rust (stable)** — `rustc --version`. If missing:
   ```sh
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
   source "$HOME/.cargo/env"
   ```
-- **Xcode Command Line Tools** — `xcode-select --install`
+- **macOS:** Xcode Command Line Tools — `xcode-select --install`
+- **Windows:** the MSVC C++ Build Tools and WebView2 runtime (preinstalled on
+  Windows 11; the installer fetches it if absent). See the Windows doc above.
 
 ## Run
 
@@ -229,10 +238,12 @@ npm run release:local
 
 ## Release process
 
-Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a
-`macos-latest` runner: it builds the **universal DMG** plus **signed updater
-artifacts** (`clawd.app.tar.gz` + `.sig` + `latest.json`) and publishes a
-Release with auto-generated notes. Two ways to trigger it:
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) on two
+runners in parallel — `macos-latest` builds the **universal DMG** (+ signed
+`clawd.app.tar.gz` + `.sig`) and `windows-latest` builds the **NSIS `-setup.exe`
+and `.msi`** (+ signed `-setup.exe.sig`). A final job merges the per-platform
+updater fragments into one `latest.json` and publishes a single Release with
+auto-generated notes. Two ways to trigger it:
 
 - **Push a `v*` tag** (classic):
   ```sh
