@@ -17,6 +17,10 @@ dist-ssr
 src-tauri/target
 src-tauri/gen/schemas
 
+# Generated updater manifest + per-platform fragments (built in CI / local release)
+latest.json
+updater-fragment*.json
+
 # Secrets
 .env
 .env.*

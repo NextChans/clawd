@@ -22,8 +22,12 @@ use usage::Usage;
 /// How often we rescan the logs and push a fresh snapshot to the frontend.
 const POLL_SECS: u64 = 30;
 
-/// The global hotkey that toggles between Roam and Grab mode.
+/// The global hotkey that toggles between Roam and Grab mode. macOS uses ⌘;
+/// everywhere else (Windows) uses Ctrl, since there's no Command key.
+#[cfg(target_os = "macos")]
 const GRAB_SHORTCUT: &str = "cmd+shift+c";
+#[cfg(not(target_os = "macos"))]
+const GRAB_SHORTCUT: &str = "ctrl+shift+c";
 
 /// The cat's default mood before the frontend reports one. Drives the wander
 /// cadence in Roam mode; see `roam::params`.

@@ -8,7 +8,8 @@
 //! `anthropic-ratelimit-unified-5h/7d-utilization` headers off the response.
 //!
 //! Everything here is best-effort and clearly labelled experimental:
-//!   - the token lives in the **macOS Keychain**, never in the config store;
+//!   - the token lives in the **OS credential store** (macOS Keychain /
+//!     Windows Credential Manager), never in the config store;
 //!   - the header names + the OAuth request shape are undocumented, so if they
 //!     don't match we surface the raw status + headers in `debug` (rather than
 //!     guessing) and the app just keeps using local-log usage;

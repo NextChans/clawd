@@ -6,6 +6,13 @@ name: Release
 #    `v<version>` tag itself — so a release can be cut end-to-end without pushing
 #    a tag from a machine that can't (e.g. a sandbox where tag push is blocked).
 #  - push a `v*` tag: the classic path, still supported as a manual fallback.
+#
+# Two platforms build in parallel on their own runners (macOS + Windows) and
+# upload their bundles as *workflow artifacts*. A single final `release` job
+# then downloads everything, merges the per-platform updater fragments into one
+# `latest.json`, and publishes the GitHub Release in one shot — so only one job
+# ever creates the release (no cross-runner race) and the updater manifest can
+# span both platforms.
 on:
   push:
     tags:
@@ -25,21 +32,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      # Resolve the tag/version once, from whichever trigger fired. On a tag
-      # push it's the ref; on workflow_dispatch it's the input (or package.json).
-      - name: Resolve release tag
-        id: rel
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF_NAME}"
-          else
-            V="${{ github.event.inputs.version }}"
-            [ -z "$V" ] && V="$(node -p "require('./package.json').version")"
-            TAG="v${V}"
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Releasing ${TAG}"
 
       - uses: actions/setup-node@v4
         with:
@@ -76,9 +68,124 @@ jobs:
             npm run tauri build -- --target universal-apple-darwin
           fi
 
-      # No-op (exits 0) when the build was unsigned; writes latest.json otherwise.
-      - name: Generate updater manifest (latest.json)
-        run: node scripts/gen-updater-manifest.mjs
+      # Writes updater-fragment-macos.json (darwin-x86_64 + darwin-aarch64).
+      # No-op (exits 0, no file) when the build was unsigned.
+      - name: Generate updater fragment (macOS)
+        run: node scripts/gen-updater-manifest.mjs updater-fragment-macos.json
+
+      - name: Upload macOS bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          if-no-files-found: error
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+
+      - name: Upload macOS updater fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-fragment-macos
+          if-no-files-found: ignore
+          path: updater-fragment-macos.json
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # bundle.targets is "all", so this produces both the NSIS `-setup.exe` and
+      # the MSI. The NSIS installer is also the updater payload; when a signing
+      # key is present we emit the `-setup.exe.sig` next to it via --config.
+      # bash (Git Bash, preinstalled on the runner) keeps the quoting identical
+      # to the macOS job.
+      - name: Build Windows installers (+ signed updater artifacts when keyed)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Signing key present — building signed updater artifacts."
+            npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          else
+            echo "No signing key — building unsigned (installers only, no auto-update)."
+            npm run tauri build
+          fi
+
+      # Writes updater-fragment-windows.json (windows-x86_64).
+      # No-op (exits 0, no file) when the build was unsigned.
+      - name: Generate updater fragment (Windows)
+        shell: bash
+        run: node scripts/gen-updater-manifest.mjs updater-fragment-windows.json
+
+      - name: Upload Windows bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload Windows updater fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-fragment-windows
+          if-no-files-found: ignore
+          path: updater-fragment-windows.json
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Resolve the tag/version once, from whichever trigger fired. On a tag
+      # push it's the ref; on workflow_dispatch it's the input (or package.json).
+      - name: Resolve release tag
+        id: rel
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            V="${{ github.event.inputs.version }}"
+            [ -z "$V" ] && V="$(node -p "require('./package.json').version")"
+            TAG="v${V}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${TAG}"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Collect the per-platform updater fragments (unique filenames, so no
+      # collision) into one dir and merge them into latest.json. If every build
+      # was unsigned there are no fragments and the merge skips latest.json.
+      - name: Merge updater manifest (latest.json)
+        run: |
+          mkdir -p frags
+          find artifacts -name 'updater-fragment-*.json' -exec cp {} frags/ \; || true
+          node scripts/merge-updater-manifest.mjs frags latest.json
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
@@ -88,13 +195,14 @@ jobs:
           # it doesn't already exist, so no tag push is required.
           tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          # latest.json / the .app.tar.gz(.sig) only exist for signed builds;
-          # softprops skips missing glob matches, so an unsigned release just
-          # uploads the DMG.
+          # latest.json / the *.sig only exist for signed builds; softprops skips
+          # missing glob matches, so an unsigned release just uploads installers.
           files: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            artifacts/release-macos/*.dmg
+            artifacts/release-macos/*.app.tar.gz
+            artifacts/release-macos/*.app.tar.gz.sig
+            artifacts/release-windows/*-setup.exe
+            artifacts/release-windows/*.msi
             latest.json
           draft: false
           prerelease: false
