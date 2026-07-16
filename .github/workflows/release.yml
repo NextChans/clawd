@@ -195,14 +195,18 @@ jobs:
           # it doesn't already exist, so no tag push is required.
           tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
+          # Recursive globs: actions/upload-artifact@v4 preserves the directory
+          # structure from the paths' common root, so the bundles land under an
+          # extra subdir after download (e.g. artifacts/release-macos/dmg/*.dmg,
+          # artifacts/release-windows/nsis/*-setup.exe). Match at any depth.
           # latest.json / the *.sig only exist for signed builds; softprops skips
           # missing glob matches, so an unsigned release just uploads installers.
           files: |
-            artifacts/release-macos/*.dmg
-            artifacts/release-macos/*.app.tar.gz
-            artifacts/release-macos/*.app.tar.gz.sig
-            artifacts/release-windows/*-setup.exe
-            artifacts/release-windows/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.app.tar.gz
+            artifacts/**/*.app.tar.gz.sig
+            artifacts/**/*-setup.exe
+            artifacts/**/*.msi
             latest.json
           draft: false
           prerelease: false
