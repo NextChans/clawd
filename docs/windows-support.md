@@ -111,12 +111,13 @@ workflow** (`workflow_dispatch`, version defaults to `package.json`).
 
 ### Updater signing
 
-Auto-update stays **opt-in and off by default**. Only when the
-`TAURI_SIGNING_PRIVATE_KEY` (+ `..._PASSWORD`) secrets are set do the builds
-emit signed updater artifacts and a `latest.json`; otherwise the Release ships
-installers only and the app falls back to opening the Releases page. The **same
-minisign key signs both platforms** — set it up once with
-`scripts/setup-updater-key.sh`.
+Signed auto-update is gated on the `TAURI_SIGNING_PRIVATE_KEY` (+ `..._PASSWORD`)
+secrets: when present, the builds emit signed updater artifacts and a
+`latest.json`; when absent, the Release ships installers only and the app falls
+back to opening the Releases page. **This repo already has the key configured**
+(the macOS releases ship `clawd.app.tar.gz.sig` + `latest.json`), and the **same
+minisign key signs both platforms** — so Windows auto-update works out of the
+box, no extra setup. The key is managed via `scripts/setup-updater-key.sh`.
 
 ## Caveats
 
