@@ -25,7 +25,7 @@ import { useIdleThoughts } from './hooks/useIdleThoughts';
 import { useStats } from './hooks/useStats';
 import { ACHIEVEMENTS, Achievement, unlockedIds } from './achievements';
 import { FOCUS_EVENT, FOCUS_DONE_EVENT } from './hooks/usePomodoro';
-import { ACTIVITY_FOR_STATE, CatState } from './types';
+import { ACTIVITY_FOR_STATE, CatState, hatTopPct } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
 
@@ -770,6 +770,21 @@ export default function App() {
   }
   const usePose = !!overridePose && hasCatSprite(config.catColor, overridePose);
 
+  // The emoji hat is a box-anchored overlay, so it only lines up with the
+  // upright forward-sitting pose. Show it only then — resting (idle), no
+  // posture-changing override, and a mood that maps to `sit_forward`
+  // (playing / curious / active). Walking/running frames shift the body within
+  // the sprite (hat drifts off), and sleep/exhausted/alert/angry sit low or
+  // sideways, so the hat hides for those rather than float wrong.
+  const showHat =
+    !!config.catHat &&
+    gait === 'idle' &&
+    !fishing &&
+    !usePose &&
+    (effectiveState === 'playing' ||
+      effectiveState === 'curious' ||
+      effectiveState === 'active');
+
   // On-demand furniture: a prop appears only while its mood is active (keyed on
   // the *raw* mood so it lines up with `roam.rs`'s wander target), plus the bowl
   // during a feed reaction. Idle moods (playing/curious/active) show nothing.
@@ -1170,8 +1185,8 @@ export default function App() {
             purr, pounce, greeting wiggle, pet squish) so they never collide
             with the flip or the resting breathing. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
-          {config.catHat && (
-            <div className="cat-hat" aria-hidden>
+          {showHat && (
+            <div className="cat-hat" aria-hidden style={{ top: `${hatTopPct(config.catHat)}%` }}>
               {config.catHat}
             </div>
           )}

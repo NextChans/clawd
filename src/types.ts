@@ -92,15 +92,23 @@ export const CAT_SCALE_MIN = 0.5;
 export const CAT_SCALE_MAX = 2.0;
 export const CAT_SCALE_DEFAULT = 1.0;
 
-/** Selectable emoji accessories worn above the cat. `''` = bare-headed. */
-export const CAT_HATS: { value: string; label: string }[] = [
-  { value: '', label: '없음' },
-  { value: '🎀', label: '리본' },
-  { value: '🎩', label: '중절모' },
-  { value: '👑', label: '왕관' },
-  { value: '🧢', label: '캡' },
-  { value: '🌸', label: '꽃' },
+/** Selectable emoji accessories worn above the cat. `''` = bare-headed. `top`
+ * is the vertical anchor (percent of the cat box) tuned per emoji, since each
+ * glyph carries different empty space below it (e.g. 🎩's brim sits low, so it
+ * needs a larger `top` to avoid floating). */
+export const CAT_HATS: { value: string; label: string; top: number }[] = [
+  { value: '', label: '없음', top: 24 },
+  { value: '🎀', label: '리본', top: 24 },
+  { value: '🎩', label: '중절모', top: 30 },
+  { value: '👑', label: '왕관', top: 26 },
+  { value: '🧢', label: '캡', top: 26 },
+  { value: '🌸', label: '꽃', top: 24 },
 ];
+
+/** The tuned `top` anchor (percent) for a hat value; falls back to 24. */
+export function hatTopPct(value: string): number {
+  return CAT_HATS.find((h) => h.value === value)?.top ?? 24;
+}
 
 export interface Config {
   thresholds: Thresholds;
