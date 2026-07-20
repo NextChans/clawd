@@ -93,21 +93,28 @@ export const CAT_SCALE_MAX = 2.0;
 export const CAT_SCALE_DEFAULT = 1.0;
 
 /** Selectable emoji accessories worn above the cat. `''` = bare-headed. `top`
- * is the vertical anchor (percent of the cat box) tuned per emoji, since each
- * glyph carries different empty space below it (e.g. 🎩's brim sits low, so it
- * needs a larger `top` to avoid floating). */
-export const CAT_HATS: { value: string; label: string; top: number }[] = [
-  { value: '', label: '없음', top: 24 },
-  { value: '🎀', label: '리본', top: 24 },
-  { value: '🎩', label: '중절모', top: 30 },
-  { value: '👑', label: '왕관', top: 26 },
-  { value: '🧢', label: '캡', top: 26 },
-  { value: '🌸', label: '꽃', top: 24 },
+ * is the vertical anchor (percent of the cat box) and `size` the glyph px —
+ * both tuned per emoji, since each glyph carries different mass/empty space
+ * (a tall 🎩 must sit high; 🌸 reads small so it's sized up). No per-hat
+ * *horizontal* nudge: the cat mirrors on turn, which would flip any offset the
+ * wrong way — so only well-centered glyphs are offered. */
+export const CAT_HATS: { value: string; label: string; top: number; size: number }[] = [
+  { value: '', label: '없음', top: 20, size: 34 },
+  { value: '🎀', label: '리본', top: 24, size: 34 },
+  { value: '🎩', label: '중절모', top: 8, size: 34 },
+  { value: '👑', label: '왕관', top: 12, size: 34 },
+  { value: '👒', label: '밀짚모자', top: 16, size: 40 },
+  { value: '🌸', label: '꽃', top: 24, size: 32 },
 ];
 
-/** The tuned `top` anchor (percent) for a hat value; falls back to 24. */
+/** The tuned `top` anchor (percent) for a hat value; falls back to 20. */
 export function hatTopPct(value: string): number {
-  return CAT_HATS.find((h) => h.value === value)?.top ?? 24;
+  return CAT_HATS.find((h) => h.value === value)?.top ?? 20;
+}
+
+/** The tuned glyph size (px, at 1× cat scale) for a hat value; falls back to 34. */
+export function hatSizePx(value: string): number {
+  return CAT_HATS.find((h) => h.value === value)?.size ?? 34;
 }
 
 export interface Config {
