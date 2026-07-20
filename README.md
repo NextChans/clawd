@@ -85,6 +85,8 @@ invite friends' cats over the **network**.
 - **⚡ Usage reactions** — the cat reacts to your Claude activity in the moment: a
   sudden token burst gives it the **zoomies**, and a fresh **5-hour session
   window** (session-usage integration on) gets a wake-up **stretch**.
+- **🎉 Celebrations** — confetti when the **cat-tower evolves** (today's tokens
+  cross into a higher tier), plus a hidden **party** if you rapid-click the cat.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
   session** and **weekly** limits as live gauges, with a heads-up notification
   near the cap. Because it uses a Claude Code OAuth token, it also reflects

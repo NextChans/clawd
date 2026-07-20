@@ -259,6 +259,32 @@
 }
 .react-zoomies { animation-iteration-count: 2; }
 
+/* Celebration confetti — a small shower of emoji above the cat, each piece
+   staggered by its index (`--i`) so they don't fall in lockstep. Covers the
+   stage so it reads in both Roam and the smaller Grab window. */
+.confetti {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 120px;
+  pointer-events: none;
+  z-index: 12;
+}
+.confetti span {
+  position: absolute;
+  top: -18px;
+  left: calc(12% + (var(--i) * 15%));
+  font-size: 18px;
+  animation: confetti-fall 1.4s ease-in forwards;
+  animation-delay: calc(var(--i) * 0.12s);
+}
+@keyframes confetti-fall {
+  0% { opacity: 0; transform: translateY(-8px) rotate(0deg) scale(0.7); }
+  15% { opacity: 1; transform: translateY(6px) rotate(40deg) scale(1.1); }
+  100% { opacity: 0; transform: translateY(110px) rotate(220deg) scale(1); }
+}
+
 /* Playthings the cat reacts to (Roam): butterfly / ball / yarn / bird. The
    outer `.plaything` is glided start→target imperatively via `transform` from
    App.tsx; the inner `.plaything-inner` carries the per-kind flourish so the two
@@ -392,6 +418,7 @@
   .lure,
   .bird-body,
   .feed-sparkle,
-  .react-fx { animation: none !important; }
+  .react-fx,
+  .confetti span { animation: none !important; }
   .cat-container::before { transition: none !important; }
 }
