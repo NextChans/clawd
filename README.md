@@ -86,7 +86,8 @@ invite friends' cats over the **network**.
   sudden token burst gives it the **zoomies**, and a fresh **5-hour session
   window** (session-usage integration on) gets a wake-up **stretch**.
 - **🎉 Celebrations** — confetti when the **cat-tower evolves** (today's tokens
-  cross into a higher tier), plus a hidden **party** if you rapid-click the cat.
+  cross into a higher tier), plus a hidden **party** if you rapid-click the cat,
+  and a rare **golden cat** shimmer if you're lucky.
 - **🌙 Late-night care** — still coding in the small hours? The cat gently tells
   you to wrap up (once a night). The launch greeting is time-of-day aware too.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
