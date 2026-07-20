@@ -770,20 +770,21 @@ export default function App() {
   }
   const usePose = !!overridePose && hasCatSprite(config.catColor, overridePose);
 
-  // The emoji hat is a box-anchored overlay, so it only lines up with the
-  // upright forward-sitting pose. Show it only then — resting (idle), no
-  // posture-changing override, and a mood that maps to `sit_forward`
-  // (playing / curious / active). Walking/running frames shift the body within
-  // the sprite (hat drifts off), and sleep/exhausted/alert/angry sit low or
-  // sideways, so the hat hides for those rather than float wrong.
+  // The emoji hat is a box-anchored overlay, so it can't track the sprite's
+  // head across *every* frame. Show it for any upright, idle pose — the head
+  // sits in roughly the same spot for sit / alert / angry, so one anchor reads
+  // fine. Hide it only where it would clearly float wrong: while moving
+  // (walk/run frames shift the body within the sprite), while curled/lying
+  // (sleeping, exhausted), and during a posture-changing expressive pose
+  // (eating at the bowl, pounce, stretch, …).
+  const HAT_BAD_POSE = new Set(['eating', 'playing_pounce', 'stretch']);
   const showHat =
     !!config.catHat &&
     gait === 'idle' &&
     !fishing &&
-    !usePose &&
-    (effectiveState === 'playing' ||
-      effectiveState === 'curious' ||
-      effectiveState === 'active');
+    effectiveState !== 'sleeping' &&
+    effectiveState !== 'exhausted' &&
+    !(usePose && overridePose !== undefined && HAT_BAD_POSE.has(overridePose));
 
   // On-demand furniture: a prop appears only while its mood is active (keyed on
   // the *raw* mood so it lines up with `roam.rs`'s wander target), plus the bowl
