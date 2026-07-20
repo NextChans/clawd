@@ -18,6 +18,7 @@ import { useSessionAlert } from './hooks/useSessionAlert';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { useUsageReactions } from './hooks/useUsageReactions';
 import { useCelebration } from './hooks/useCelebration';
+import { useLateNightCare } from './hooks/useLateNightCare';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -76,6 +77,15 @@ interface FurnitureEvent {
 /** How long the "just ate" reaction (temp sit + bowl linger) lasts. */
 const FEED_REACT_MS = 5000;
 
+/** Time-of-day flavored launch greeting, so the hello matches the clock. */
+function greetingText(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return '좋은 아침이다냥 ☀️';
+  if (h >= 11 && h < 17) return '반가워냥! 😺';
+  if (h >= 17 && h < 22) return '좋은 저녁이다냥 🌆';
+  return '아직 안 잤냥? 🌙';
+}
+
 const FIRST_RUN_KEY = 'first_run_done';
 /** Tooltip max width (px); must match `.tooltip { max-width }` in App.css. */
 const TOOLTIP_MAX = 240;
@@ -111,6 +121,8 @@ export default function App() {
   // Celebrations: a tower tier-up throws confetti; a rapid-click streak on the
   // cat sets off a hidden party. Both render through the confetti/pose/bubble.
   const { celebration, party } = useCelebration(usage.tower_tier);
+  // Once-a-night caring nudge when you're still working in the small hours.
+  const nightCare = useLateNightCare(usage);
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -638,6 +650,8 @@ export default function App() {
     overridePose = 'stretch';
   } else if (feedPhase) {
     overridePose = feedPhase === 'purr' ? 'happy_purr' : 'eating';
+  } else if (nightCare && gait === 'idle') {
+    overridePose = 'yawn'; // tired late-night look while the nudge is up
   } else if (subEvent && gait === 'idle') {
     overridePose = subEvent; // 'yawn' | 'stretch'
   }
@@ -813,7 +827,7 @@ export default function App() {
               exit={{ opacity: 0, y: 6, scale: 0.9 }}
               transition={{ duration: 0.2 }}
             >
-              반가워냥! 😺
+              {greetingText()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -844,6 +858,21 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {celebration === 'milestone' ? '🏆 타워 진화다냥!' : '🎉 파티다냥!'}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Late-night caring nudge. */}
+        <AnimatePresence>
+          {nightCare && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              🌙 늦었다냥… 무리하지 말라냥
             </motion.div>
           )}
         </AnimatePresence>
