@@ -17,6 +17,7 @@ import { useSessionUsage } from './hooks/useSessionUsage';
 import { useSessionAlert } from './hooks/useSessionAlert';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { useUsageReactions } from './hooks/useUsageReactions';
+import { useCelebration } from './hooks/useCelebration';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -107,6 +108,9 @@ export default function App() {
   // One-shot usage reactions layered over the steady mood: a token burst gives
   // the cat the zoomies; a fresh 5-hour window gets a wake-up stretch.
   const reaction = useUsageReactions(usage, sessionPct, config.thresholds);
+  // Celebrations: a tower tier-up throws confetti; a rapid-click streak on the
+  // cat sets off a hidden party. Both render through the confetti/pose/bubble.
+  const { celebration, party } = useCelebration(usage.tower_tier);
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -164,6 +168,11 @@ export default function App() {
   const stringLineRef = useRef<SVGLineElement>(null); // tip → feather
   const fishRaf = useRef<number | null>(null);
   const lastPounce = useRef(0);
+  // Hidden party easter egg: a burst of rapid clicks on the cat. A lone click
+  // (>500ms since the last) still opens details; only quick repeats count as
+  // "play" and are withheld from opening details.
+  const lastClick = useRef(0);
+  const rapidClicks = useRef(0);
   // The cat's current position within the window, mirrored for peer cats so a
   // visitor can drift over to play. Updated wherever we move the cat.
   const catXRef = useRef(0);
@@ -564,6 +573,21 @@ export default function App() {
   const onClick = () => {
     if (fishing) return; // clicks are part of play, not "open details"
     if (dragged.current) return; // it was a drag, not a click
+    // Rapid-click easter egg: quick repeats are "play". The first click of a
+    // burst still opens details; once a streak builds it sets off the party and
+    // the streak clicks are withheld from re-opening details.
+    const now = Date.now();
+    const rapid = now - lastClick.current < 500;
+    lastClick.current = now;
+    if (rapid) {
+      rapidClicks.current += 1;
+      if (rapidClicks.current >= 4) {
+        rapidClicks.current = 0;
+        party();
+      }
+      return;
+    }
+    rapidClicks.current = 0;
     invoke('open_details').catch(() => {});
   };
 
@@ -591,7 +615,9 @@ export default function App() {
   // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
   // to a content sit for the reaction window. Otherwise show the real mood.
   const effectiveState: CatState =
-    fishing || greeting || reaction || (fed && state === 'exhausted') ? 'playing' : state;
+    fishing || greeting || reaction || celebration || (fed && state === 'exhausted')
+      ? 'playing'
+      : state;
 
   // Expressive pose override — the new art (cream only). Priority, highest
   // first: petting/holding in grab → purr; then Roam flourishes. Each maps to a
@@ -600,6 +626,8 @@ export default function App() {
   let overridePose: string | undefined;
   if (grab) {
     if (hover || holding) overridePose = 'happy_purr';
+  } else if (celebration) {
+    overridePose = 'happy_purr';
   } else if (pounce) {
     overridePose = 'playing_pounce';
   } else if (startled) {
@@ -729,6 +757,18 @@ export default function App() {
         </div>
       )}
 
+      {/* Celebration confetti (tower tier-up or the party easter egg). Shown in
+          any mode — the party can be set off by clicking the cat in Grab. */}
+      {celebration && (
+        <div className={`confetti confetti-${celebration}`} aria-hidden>
+          {['🎉', '🎊', '✨', celebration === 'milestone' ? '🏆' : '🎈', '⭐', '🎉'].map((c, i) => (
+            <span key={i} style={{ '--i': i } as CSSProperties}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div
         ref={containerRef}
         className={containerClass}
@@ -780,6 +820,21 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {reaction === 'zoomies' ? '🔥 폭주 냥!' : '✨ 새 세션이다냥!'}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Celebration bubble — tower tier-up or the party easter egg. */}
+        <AnimatePresence>
+          {celebration && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              {celebration === 'milestone' ? '🏆 타워 진화다냥!' : '🎉 파티다냥!'}
             </motion.div>
           )}
         </AnimatePresence>
