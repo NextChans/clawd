@@ -21,6 +21,7 @@ import { useCelebration } from './hooks/useCelebration';
 import { useLateNightCare } from './hooks/useLateNightCare';
 import { useGoldenMoment } from './hooks/useGoldenMoment';
 import { useBreakReminder } from './hooks/useBreakReminder';
+import { useIdleThoughts } from './hooks/useIdleThoughts';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -79,9 +80,16 @@ interface FurnitureEvent {
 /** How long the "just ate" reaction (temp sit + bowl linger) lasts. */
 const FEED_REACT_MS = 5000;
 
-/** Time-of-day flavored launch greeting, so the hello matches the clock. */
+/** Launch greeting. Special calendar days win; otherwise it's flavored by the
+ * time of day so the hello matches the clock. */
 function greetingText(): string {
-  const h = new Date().getHours();
+  const now = new Date();
+  const md = `${now.getMonth() + 1}-${now.getDate()}`;
+  if (md === '1-1') return '새해 복 많이 받으라냥 🎍';
+  if (md === '12-24' || md === '12-25') return '메리 크리스마스다냥 🎄';
+  if (md === '10-31') return '해피 할로윈이다냥 🎃';
+
+  const h = now.getHours();
   if (h >= 5 && h < 11) return '좋은 아침이다냥 ☀️';
   if (h >= 11 && h < 17) return '반가워냥! 😺';
   if (h >= 17 && h < 22) return '좋은 저녁이다냥 🌆';
@@ -129,6 +137,8 @@ export default function App() {
   const goldenRaw = useGoldenMoment();
   // Gentle "take a break" nudge after a long continuous working stretch.
   const breakRaw = useBreakReminder(usage);
+  // Occasional idle "thoughts" — a soft bit of personality.
+  const thoughtRaw = useIdleThoughts(config.funEffects);
 
   // The whole playful layer is gated by one setting so it can be turned off for
   // a calm, minimal cat. Hooks always run (rules of hooks); we just withhold
@@ -139,6 +149,7 @@ export default function App() {
   const nightCare = fun ? nightCareRaw : false;
   const golden = fun ? goldenRaw : false;
   const breakNudge = fun ? breakRaw : false;
+  const thought = fun ? thoughtRaw : null;
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -914,6 +925,29 @@ export default function App() {
               ☕ 오래 했다냥, 잠깐 쉬자냥
             </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Idle thought — only when calm and nothing else is talking, so the
+            bubbles never stack. */}
+        <AnimatePresence>
+          {thought &&
+            !grab &&
+            !fishing &&
+            !greeting &&
+            !reaction &&
+            !celebration &&
+            !nightCare &&
+            !breakNudge && (
+              <motion.div
+                className="react-bubble"
+                initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 6, scale: 0.9 }}
+                transition={{ duration: 0.2 }}
+              >
+                {thought}
+              </motion.div>
+            )}
         </AnimatePresence>
 
         {/* Golden cat — rare lucky shimmer. */}

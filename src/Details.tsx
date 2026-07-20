@@ -294,11 +294,11 @@ export default function Details() {
           </button>
         </label>
 
-        {/* Nickname is used by *both* LAN presence and remote rooms, so it's
-            always editable — not gated behind the LAN toggle. Empty → a
-            generated "cat-1234" name. */}
+        {/* The cat's name: shown in its own greeting + hover tooltip, and — when
+            social mode is on — under its cat on friends' screens. One field for
+            both, always editable. Empty → a generated "cat-1234" name. */}
         <label className="d-field-col d-nick">
-          <span>닉네임 (친구 화면에 표시)</span>
+          <span>이름 (인사말 · 친구 화면에 표시)</span>
           <input
             type="text"
             className="d-nick-input"
