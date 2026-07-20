@@ -13,7 +13,15 @@ import { useUpdater } from './hooks/useUpdater';
 import { useStats } from './hooks/useStats';
 import { usePomodoro } from './hooks/usePomodoro';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
-import { ACTIVITY_BADGE, CAT_COLORS, CAT_HATS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
+import {
+  ACTIVITY_BADGE,
+  CAT_COLORS,
+  CAT_HATS,
+  CAT_SCALE_MAX,
+  CAT_SCALE_MIN,
+  Config,
+  hatTopPct,
+} from './types';
 import { ACHIEVEMENTS, bondLevel, BOND_MAX_LEVEL, unlockedIds } from './achievements';
 import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
@@ -119,7 +127,11 @@ export default function Details() {
     <div className="details">
       <header className="d-head">
         <div className="d-cat">
-          {config.catHat && <span className="d-cat-hat" aria-hidden>{config.catHat}</span>}
+          {config.catHat && (
+            <span className="d-cat-hat" aria-hidden style={{ top: `${hatTopPct(config.catHat)}%` }}>
+              {config.catHat}
+            </span>
+          )}
           <Cat state={state} color={config.catColor} />
         </div>
         <div>
