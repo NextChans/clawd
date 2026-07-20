@@ -82,6 +82,9 @@ invite friends' cats over the **network**.
   (re-click the tray item to end).
 - **🍚 Feeding & 🖐️ petting** — feed from the tray (the cat trots to its bowl);
   hover/hold it in Grab mode for a purr.
+- **⚡ Usage reactions** — the cat reacts to your Claude activity in the moment: a
+  sudden token burst gives it the **zoomies**, and a fresh **5-hour session
+  window** (session-usage integration on) gets a wake-up **stretch**.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
   session** and **weekly** limits as live gauges, with a heads-up notification
   near the cap. Because it uses a Claude Code OAuth token, it also reflects

@@ -224,6 +224,41 @@
   z-index: 11;
 }
 
+/* Usage reaction bubble — reuses the greeting bubble's pill, tinted per beat.
+   Rides below the cat like `.greet`. */
+.react-bubble {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(28, 24, 20, 0.92);
+  color: #ffe6a0;
+  font: 700 12px/1.3 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 11;
+}
+
+/* Reaction FX burst above the cat — one-shot pop, same motion as the feed
+   sparkle so both reactions feel of a piece. */
+.react-fx {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  font-size: 18px;
+  pointer-events: none;
+  z-index: 4;
+  animation: sparkle-pop 1.2s ease-out forwards;
+}
+.react-zoomies { animation-iteration-count: 2; }
+
 /* Playthings the cat reacts to (Roam): butterfly / ball / yarn / bird. The
    outer `.plaything` is glided start→target imperatively via `transform` from
    App.tsx; the inner `.plaything-inner` carries the per-kind flourish so the two
@@ -356,6 +391,7 @@
   .pt-bird,
   .lure,
   .bird-body,
-  .feed-sparkle { animation: none !important; }
+  .feed-sparkle,
+  .react-fx { animation: none !important; }
   .cat-container::before { transition: none !important; }
 }

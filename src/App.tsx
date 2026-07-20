@@ -16,6 +16,7 @@ import { usePeers, usePresencePublish } from './hooks/usePresence';
 import { useSessionUsage } from './hooks/useSessionUsage';
 import { useSessionAlert } from './hooks/useSessionAlert';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
+import { useUsageReactions } from './hooks/useUsageReactions';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -103,6 +104,9 @@ export default function App() {
   const session = useSessionUsage();
   const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
   const { state, reason } = classifyWithReason(usage, config, sessionPct, session.rising);
+  // One-shot usage reactions layered over the steady mood: a token burst gives
+  // the cat the zoomies; a fresh 5-hour window gets a wake-up stretch.
+  const reaction = useUsageReactions(usage, sessionPct, config.thresholds);
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -587,7 +591,7 @@ export default function App() {
   // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
   // to a content sit for the reaction window. Otherwise show the real mood.
   const effectiveState: CatState =
-    fishing || greeting || (fed && state === 'exhausted') ? 'playing' : state;
+    fishing || greeting || reaction || (fed && state === 'exhausted') ? 'playing' : state;
 
   // Expressive pose override — the new art (cream only). Priority, highest
   // first: petting/holding in grab → purr; then Roam flourishes. Each maps to a
@@ -600,6 +604,10 @@ export default function App() {
     overridePose = 'playing_pounce';
   } else if (startled) {
     overridePose = 'startled';
+  } else if (reaction === 'zoomies') {
+    overridePose = 'playing_pounce';
+  } else if (reaction === 'refresh') {
+    overridePose = 'stretch';
   } else if (feedPhase) {
     overridePose = feedPhase === 'purr' ? 'happy_purr' : 'eating';
   } else if (subEvent && gait === 'idle') {
@@ -701,6 +709,26 @@ export default function App() {
         </div>
       )}
 
+      {/* Usage reaction FX burst above the cat (Roam only): a token burst
+          throws off zoomie dust; a fresh 5-hour window sparkles awake. */}
+      {!grab && !fishing && reaction && (
+        <div className={`react-fx react-${reaction}`} aria-hidden>
+          {reaction === 'zoomies' ? (
+            <>
+              <span>💨</span>
+              <span>🔥</span>
+              <span>💨</span>
+            </>
+          ) : (
+            <>
+              <span>✨</span>
+              <span>🌅</span>
+              <span>✨</span>
+            </>
+          )}
+        </div>
+      )}
+
       <div
         ref={containerRef}
         className={containerClass}
@@ -737,6 +765,21 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               반가워냥! 😺
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Usage reaction bubble — token burst / fresh session window. */}
+        <AnimatePresence>
+          {reaction && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              {reaction === 'zoomies' ? '🔥 폭주 냥!' : '✨ 새 세션이다냥!'}
             </motion.div>
           )}
         </AnimatePresence>
