@@ -448,6 +448,19 @@ export default function Details() {
             <span className="d-switch-knob" />
           </button>
         </label>
+        <label className="d-toggle" title="반응·축하 연출(질주·컨페티·하트·골든 등)을 켜고 끕니다">
+          <span className="d-toggle-label">재미 효과</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={config.funEffects}
+            aria-label="재미 효과"
+            className={config.funEffects ? 'd-switch on' : 'd-switch'}
+            onClick={() => patch({ funEffects: !config.funEffects })}
+          >
+            <span className="d-switch-knob" />
+          </button>
+        </label>
         <UpdateRow updater={updater} />
       </section>
 

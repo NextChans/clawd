@@ -88,8 +88,12 @@ invite friends' cats over the **network**.
 - **🎉 Celebrations** — confetti when the **cat-tower evolves** (today's tokens
   cross into a higher tier), plus a hidden **party** if you rapid-click the cat,
   and a rare **golden cat** shimmer if you're lucky.
-- **🌙 Late-night care** — still coding in the small hours? The cat gently tells
-  you to wrap up (once a night). The launch greeting is time-of-day aware too.
+- **🌙 Late-night & break care** — still coding in the small hours, or been at it
+  for a long unbroken stretch? The cat gently nudges you to rest. The launch
+  greeting is time-of-day aware too.
+- **🏷️ Name & calm mode** — name your cat (it shows in the greeting + hover
+  tooltip), and a **재미 효과** toggle turns all the playful effects off for a
+  minimal cat.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
   session** and **weekly** limits as live gauges, with a heads-up notification
   near the cap. Because it uses a Claude Code OAuth token, it also reflects
