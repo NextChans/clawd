@@ -19,6 +19,7 @@ import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { useUsageReactions } from './hooks/useUsageReactions';
 import { useCelebration } from './hooks/useCelebration';
 import { useLateNightCare } from './hooks/useLateNightCare';
+import { useGoldenMoment } from './hooks/useGoldenMoment';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -123,6 +124,8 @@ export default function App() {
   const { celebration, party } = useCelebration(usage.tower_tier);
   // Once-a-night caring nudge when you're still working in the small hours.
   const nightCare = useLateNightCare(usage);
+  // Rare cosmetic "golden cat" shimmer — a lucky little treat.
+  const golden = useGoldenMoment();
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -675,6 +678,9 @@ export default function App() {
   // wiggle is independent (it never sets an override) so it always applies.
   const fx = ['cat-fx'];
   if (greeting) fx.push('wiggle');
+  // Golden shimmer is a color filter on the sprite, not a transform, so it
+  // rides alongside any pose without the usePose transform-skip caveat.
+  if (golden) fx.push('golden');
   if (!usePose) {
     if (pounce) fx.push('pounce');
     if (grab && hover) fx.push('pet');
@@ -873,6 +879,21 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               🌙 늦었다냥… 무리하지 말라냥
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Golden cat — rare lucky shimmer. */}
+        <AnimatePresence>
+          {golden && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              ✨ 골든 캣이다냥! 행운이 온다냥
             </motion.div>
           )}
         </AnimatePresence>
