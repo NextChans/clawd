@@ -189,6 +189,8 @@ export default function App() {
   // afterglow before returning to normal.
   const [fed, setFed] = useState(false);
   const [feedPhase, setFeedPhase] = useState<'eating' | 'purr' | null>(null);
+  // "Still full" beat when you try to feed during the cooldown (tray no-op).
+  const [stuffed, setStuffed] = useState(false);
 
   const grab = mode === 'grab';
   const fishing = mode === 'fishing';
@@ -416,6 +418,21 @@ export default function App() {
     });
     return () => {
       timers.forEach(clearTimeout);
+      un.then((off) => off());
+    };
+  }, []);
+
+  // Feed attempted during the cooldown (tray no-op): show a brief "still full"
+  // beat so the click isn't silent — this is what made feeding feel "broken".
+  useEffect(() => {
+    let t: number | undefined;
+    const un = listen('feed-cooldown', () => {
+      setStuffed(true);
+      if (t) clearTimeout(t);
+      t = window.setTimeout(() => setStuffed(false), 3000);
+    });
+    return () => {
+      if (t) clearTimeout(t);
       un.then((off) => off());
     };
   }, []);
@@ -863,6 +880,22 @@ export default function App() {
             >
               {greetingText()}
               {config.nickname ? ` 나는 ${config.nickname}냥!` : ''}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* "Still full" — feed tried during the cooldown. Shown regardless of the
+            fun-effects toggle since it's functional feedback for a tray no-op. */}
+        <AnimatePresence>
+          {stuffed && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              😼 아직 배부르다냥 (잠시 후에)
             </motion.div>
           )}
         </AnimatePresence>
