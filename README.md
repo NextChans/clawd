@@ -81,7 +81,7 @@ invite friends' cats over the **network**.
   overlay stays click-through, so other apps stay clickable while you play
   (re-click the tray item to end).
 - **🍚 Feeding & 🖐️ petting** — feed from the tray (the cat trots to its bowl);
-  hover/hold it in Grab mode for a purr.
+  hover/hold it in Grab mode for a purr — petting floats up hearts.
 - **⚡ Usage reactions** — the cat reacts to your Claude activity in the moment: a
   sudden token burst gives it the **zoomies**, and a fresh **5-hour session
   window** (session-usage integration on) gets a wake-up **stretch**.
