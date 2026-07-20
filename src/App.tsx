@@ -769,6 +769,15 @@ export default function App() {
         </div>
       )}
 
+      {/* Petting hearts — drift up while you pet the cat (hold it in Grab). */}
+      {grab && holding && (
+        <div className="pet-hearts" aria-hidden>
+          <span style={{ '--i': 0 } as CSSProperties}>💕</span>
+          <span style={{ '--i': 1 } as CSSProperties}>💗</span>
+          <span style={{ '--i': 2 } as CSSProperties}>💕</span>
+        </div>
+      )}
+
       <div
         ref={containerRef}
         className={containerClass}
