@@ -289,6 +289,9 @@ pub fn do_feed(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     if let Some(t) = state.last_feed() {
         if t.elapsed() < FEED_COOLDOWN {
+            // Still full — tell the frontend so a tray click during the cooldown
+            // shows a gentle "not yet" reaction instead of being a silent no-op.
+            let _ = app.emit("feed-cooldown", ());
             return false;
         }
     }
