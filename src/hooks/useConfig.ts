@@ -22,6 +22,7 @@ function merge(partial: Partial<Config> | undefined | null): Config {
     catColor: p.catColor ?? DEFAULT_CONFIG.catColor,
     autostart: p.autostart ?? DEFAULT_CONFIG.autostart,
     catScale: clampScale(p.catScale),
+    catHat: typeof p.catHat === 'string' ? p.catHat : DEFAULT_CONFIG.catHat,
     funEffects: typeof p.funEffects === 'boolean' ? p.funEffects : DEFAULT_CONFIG.funEffects,
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...(p.thresholds ?? {}) },
     networkEnabled: p.networkEnabled ?? DEFAULT_CONFIG.networkEnabled,

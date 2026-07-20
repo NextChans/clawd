@@ -1170,6 +1170,11 @@ export default function App() {
             purr, pounce, greeting wiggle, pet squish) so they never collide
             with the flip or the resting breathing. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
+          {config.catHat && (
+            <div className="cat-hat" aria-hidden>
+              {config.catHat}
+            </div>
+          )}
           <div className={fx.join(' ')}>
             <Cat
               state={effectiveState}

@@ -100,6 +100,8 @@ invite friends' cats over the **network**.
 - **🏷️ Name & calm mode** — name your cat: it shows in the greeting + hover
   tooltip **and** under your cat on friends' screens in social mode (one name for
   both). A **재미 효과** toggle turns all the playful effects off for a minimal cat.
+- **🎩 Dress-up** — pick an emoji accessory (ribbon / top hat / crown / cap /
+  flower) that rides above the cat, scaling and flipping right along with it.
 - **📊 Session-usage integration (experimental)** — optionally show your **5-hour
   session** and **weekly** limits as live gauges, with a heads-up notification
   near the cap. Because it uses a Claude Code OAuth token, it also reflects
