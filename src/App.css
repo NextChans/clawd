@@ -74,6 +74,22 @@
   transform: scaleX(-1) scale(var(--cat-scale, 1));
 }
 
+/* Emoji accessory worn above the cat. `.cat-flip` is transformed (scale/flip),
+   so this absolute child is positioned relative to it — meaning the hat scales
+   and mirrors together with the cat for free. `top` is tuned to sit just above
+   the head; nudge if a sprite's head sits higher/lower. */
+.cat-hat {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translate(-50%, -50%);
+  font-size: 34px;
+  line-height: 1;
+  z-index: 3;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+
 /* Grab mode (⌘⇧C): the cat is interactive. Give it a soft glow + a pulsing
    ring so it's obvious the window will now catch clicks and drags. */
 .stage.grab .cat-flip {

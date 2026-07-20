@@ -92,6 +92,16 @@ export const CAT_SCALE_MIN = 0.5;
 export const CAT_SCALE_MAX = 2.0;
 export const CAT_SCALE_DEFAULT = 1.0;
 
+/** Selectable emoji accessories worn above the cat. `''` = bare-headed. */
+export const CAT_HATS: { value: string; label: string }[] = [
+  { value: '', label: '없음' },
+  { value: '🎀', label: '리본' },
+  { value: '🎩', label: '중절모' },
+  { value: '👑', label: '왕관' },
+  { value: '🧢', label: '캡' },
+  { value: '🌸', label: '꽃' },
+];
+
 export interface Config {
   thresholds: Thresholds;
   catColor: CatColor;
@@ -103,6 +113,9 @@ export interface Config {
   /** Visual size multiplier for the cat sprite (0.5–2.0, default 1.0). Purely
    * cosmetic — the overlay geometry Rust reasons about stays fixed. */
   catScale: number;
+  /** Optional accessory worn above the cat, as an emoji ('' = none). Purely
+   * cosmetic; rides with the cat's flip + scale. See {@link CAT_HATS}. */
+  catHat: string;
   /** Master switch for the playful reactions/celebrations (usage zoomies,
    * tower-tier confetti, party, petting hearts, golden shimmer, late-night &
    * break nudges). On by default; flip off for a calm, minimal cat. */
@@ -132,6 +145,7 @@ export const DEFAULT_CONFIG: Config = {
   catColor: 'cream',
   autostart: false,
   catScale: CAT_SCALE_DEFAULT,
+  catHat: '',
   funEffects: true,
   networkEnabled: false,
   nickname: '',
