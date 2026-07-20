@@ -20,6 +20,7 @@ import { useUsageReactions } from './hooks/useUsageReactions';
 import { useCelebration } from './hooks/useCelebration';
 import { useLateNightCare } from './hooks/useLateNightCare';
 import { useGoldenMoment } from './hooks/useGoldenMoment';
+import { useBreakReminder } from './hooks/useBreakReminder';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -118,14 +119,26 @@ export default function App() {
   const { state, reason } = classifyWithReason(usage, config, sessionPct, session.rising);
   // One-shot usage reactions layered over the steady mood: a token burst gives
   // the cat the zoomies; a fresh 5-hour window gets a wake-up stretch.
-  const reaction = useUsageReactions(usage, sessionPct, config.thresholds);
+  const reactionRaw = useUsageReactions(usage, sessionPct, config.thresholds);
   // Celebrations: a tower tier-up throws confetti; a rapid-click streak on the
   // cat sets off a hidden party. Both render through the confetti/pose/bubble.
-  const { celebration, party } = useCelebration(usage.tower_tier);
+  const { celebration: celebrationRaw, party } = useCelebration(usage.tower_tier);
   // Once-a-night caring nudge when you're still working in the small hours.
-  const nightCare = useLateNightCare(usage);
+  const nightCareRaw = useLateNightCare(usage);
   // Rare cosmetic "golden cat" shimmer — a lucky little treat.
-  const golden = useGoldenMoment();
+  const goldenRaw = useGoldenMoment();
+  // Gentle "take a break" nudge after a long continuous working stretch.
+  const breakRaw = useBreakReminder(usage);
+
+  // The whole playful layer is gated by one setting so it can be turned off for
+  // a calm, minimal cat. Hooks always run (rules of hooks); we just withhold
+  // their effects from the render/pose when the toggle is off.
+  const fun = config.funEffects;
+  const reaction = fun ? reactionRaw : null;
+  const celebration = fun ? celebrationRaw : null;
+  const nightCare = fun ? nightCareRaw : false;
+  const golden = fun ? goldenRaw : false;
+  const breakNudge = fun ? breakRaw : false;
   // Cat-toned native heads-up when the session/weekly budget nears its cap.
   useSessionAlert(session.usage);
   // Social mode: publish our coarse status + render cats from clawd peers on
@@ -655,6 +668,8 @@ export default function App() {
     overridePose = feedPhase === 'purr' ? 'happy_purr' : 'eating';
   } else if (nightCare && gait === 'idle') {
     overridePose = 'yawn'; // tired late-night look while the nudge is up
+  } else if (breakNudge && gait === 'idle') {
+    overridePose = 'stretch'; // "time to stretch" for the break nudge
   } else if (subEvent && gait === 'idle') {
     overridePose = subEvent; // 'yawn' | 'stretch'
   }
@@ -836,6 +851,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {greetingText()}
+              {config.nickname ? ` 나는 ${config.nickname}냥!` : ''}
             </motion.div>
           )}
         </AnimatePresence>
@@ -885,6 +901,21 @@ export default function App() {
           )}
         </AnimatePresence>
 
+        {/* Take-a-break nudge after a long working stretch. */}
+        <AnimatePresence>
+          {breakNudge && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              ☕ 오래 했다냥, 잠깐 쉬자냥
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Golden cat — rare lucky shimmer. */}
         <AnimatePresence>
           {golden && !greeting && (
@@ -927,7 +958,10 @@ export default function App() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <div className="tt-title">{STATE_LABEL[state]}</div>
+              <div className="tt-title">
+                {config.nickname ? `${config.nickname} · ` : ''}
+                {STATE_LABEL[state]}
+              </div>
               <div className="tt-row">오늘 {formatTokens(usage.today_tokens)} tokens</div>
               <div className="tt-row dim">
                 rate {formatRate(usage.rate_per_min)} · 오늘 {formatTokens(usage.today_tokens)}

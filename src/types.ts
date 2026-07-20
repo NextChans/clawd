@@ -103,6 +103,10 @@ export interface Config {
   /** Visual size multiplier for the cat sprite (0.5–2.0, default 1.0). Purely
    * cosmetic — the overlay geometry Rust reasons about stays fixed. */
   catScale: number;
+  /** Master switch for the playful reactions/celebrations (usage zoomies,
+   * tower-tier confetti, party, petting hearts, golden shimmer, late-night &
+   * break nudges). On by default; flip off for a calm, minimal cat. */
+  funEffects: boolean;
   /** Social mode (LAN presence). Opt-in and off by default: while on, the app
    * advertises a *coarse* status (nickname, coat color, mood, activity bucket —
    * never token counts or project names) to other clawd instances on the same
@@ -128,6 +132,7 @@ export const DEFAULT_CONFIG: Config = {
   catColor: 'cream',
   autostart: false,
   catScale: CAT_SCALE_DEFAULT,
+  funEffects: true,
   networkEnabled: false,
   nickname: '',
   remoteRelayUrl: '',
