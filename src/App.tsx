@@ -25,7 +25,7 @@ import { useIdleThoughts } from './hooks/useIdleThoughts';
 import { useStats } from './hooks/useStats';
 import { ACHIEVEMENTS, Achievement, unlockedIds } from './achievements';
 import { FOCUS_EVENT, FOCUS_DONE_EVENT } from './hooks/usePomodoro';
-import { ACTIVITY_FOR_STATE, CatState, hatTopPct } from './types';
+import { ACTIVITY_FOR_STATE, CatState, hatTopPct, hatSizePx } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
 
@@ -1187,7 +1187,11 @@ export default function App() {
             with the flip or the resting breathing. */}
         <div className={direction === 'left' ? 'cat-flip flip' : 'cat-flip'}>
           {showHat && (
-            <div className="cat-hat" aria-hidden style={{ top: `${hatTopPct(config.catHat)}%` }}>
+            <div
+              className="cat-hat"
+              aria-hidden
+              style={{ top: `${hatTopPct(config.catHat)}%`, fontSize: `${hatSizePx(config.catHat)}px` }}
+            >
               {config.catHat}
             </div>
           )}
