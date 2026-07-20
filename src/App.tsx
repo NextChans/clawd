@@ -789,8 +789,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Petting hearts — drift up while you pet the cat (hold it in Grab). */}
-      {grab && holding && (
+      {/* Petting hearts — drift up while you pet the cat in Grab: hovering the
+          cat (the same gesture that makes it purr) or holding it. `holding`
+          alone was too fiddly — the tiniest move turns a press into a drag. */}
+      {grab && (hover || holding) && (
         <div className="pet-hearts" aria-hidden>
           <span style={{ '--i': 0 } as CSSProperties}>💕</span>
           <span style={{ '--i': 1 } as CSSProperties}>💗</span>
