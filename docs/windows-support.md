@@ -13,15 +13,15 @@ platforms, and the caveats that still need eyes on a real Windows machine.
 | NSIS `-setup.exe` + `.msi` bundles | ✅ produced by `tauri build` on Windows |
 | CI compile-check (macOS **and** Windows) | ✅ `.github/workflows/ci.yml` matrix |
 | Release pipeline (both platforms, one Release) | ✅ `.github/workflows/release.yml` |
-| Cross-platform auto-update (`latest.json`) | ✅ merged from per-platform fragments |
-| Visual parity of the transparent overlay on Windows | ⚠️ needs verification on real hardware (see [Caveats](#caveats)) |
+| Cross-platform auto-update (`latest.json`) | ✅ merged from per-platform fragments; verified updating on Windows |
+| Transparent overlay + interaction on Windows | ✅ shipped since v0.13.0 and confirmed working on real hardware (run, feed, hats, etc.) |
 | Windows code signing (Authenticode) | ⚠️ not configured — SmartScreen will warn, same spirit as the unsigned macOS DMG |
 
-> The build/release plumbing is complete and verified as far as a Linux CI box
-> allows (JSON/YAML validity, frontend `tsc + vite build`, updater-manifest
-> merge, `Cargo.lock` resolution). The actual platform compiles and the
-> transparent-overlay rendering are validated by the CI runners and by anyone
-> testing the produced installer — they can't be exercised from the dev sandbox.
+> Shipping since **v0.13.0**: clawd builds, installs, runs, and auto-updates on
+> Windows on real hardware. The only outstanding item is Authenticode signing
+> (cosmetic first-run SmartScreen warning). CI (macOS + Windows) guards the
+> build; the dev sandbox here is Linux, so visual checks are done on a real
+> machine.
 
 ## What changed
 
@@ -122,12 +122,12 @@ box, no extra setup. The key is managed via `scripts/setup-updater-key.sh`.
 ## Caveats
 
 - **Transparent / click-through overlay.** The wandering-cat overlay relies on a
-  transparent, always-on-top, click-through window. Tauri supports all of this
-  on Windows via the same cross-platform APIs the app already uses
-  (`set_ignore_cursor_events`, `always_on_top`, `skip_taskbar`), but Windows
-  compositing differs from macOS. Expect to fine-tune per-monitor DPI/geometry
-  and confirm there's no white/black flash behind the transparent window on real
-  hardware — this is the highest-risk item and can't be checked from CI.
+  transparent, always-on-top, click-through window, via the same cross-platform
+  Tauri APIs the app already uses (`set_ignore_cursor_events`, `always_on_top`,
+  `skip_taskbar`). Confirmed working on real Windows hardware since v0.13.0. If a
+  future change touches overlay geometry, re-check per-monitor DPI and that
+  there's no flash behind the transparent window — the dev sandbox is Linux, so
+  those are eyeball checks on a real machine.
 - **Code signing / SmartScreen.** The Windows installers are **not
   Authenticode-signed** (no cert configured), so SmartScreen will warn on first
   run — the same posture as the unsigned macOS DMG. Add a cert later if desired;

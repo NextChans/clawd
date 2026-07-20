@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Latest Release](https://img.shields.io/github/v/release/NextChans/clawd)
 
-> A cute floating cat that lives on your Mac and reacts to how hard you're driving Claude.
+> A cute floating cat that lives on your Mac or Windows PC and reacts to how hard you're driving Claude.
 
 A tiny, frameless, always-on-top cat that wanders your desktop and changes its
 mood with your Claude usage. Quiet → it plays and (at night) naps; burning
@@ -478,6 +478,22 @@ clawd/
 
 ## Changelog
 
+- **v0.16.x** — **Play systems + dress-up.** 🏆 achievements (도감), 💞 a bond
+  level that grows with care, and a 🍅 pomodoro the cat keeps with you; plus 🎩
+  emoji accessories (ribbon / top hat / crown / sun hat / flower). v0.16.1–v0.16.3
+  tuned the hat so it only shows in upright poses and sits right per emoji.
+- **v0.15.0** — **Feed cooldown feedback.** Feeding during the 60s cooldown is no
+  longer a silent no-op — the cat shows a brief "still full" reaction.
+- **v0.14.0** — **Fun batch.** ⚡ usage reactions (zoomies on a token burst,
+  wake-up stretch on a fresh 5-hour window), 🎉 tower-tier confetti + rapid-click
+  party, 💕 petting hearts, 🌙 late-night & ☕ break care, ✨ a rare golden cat,
+  💬 idle thoughts, time-of-day & holiday greetings, cat naming (unified with the
+  social display name), and a **재미 효과** toggle to turn it all off. (v0.14.1
+  fixed the petting hearts to show on hover.)
+- **v0.13.0** — **Windows support.** clawd now builds and ships on **macOS *and*
+  Windows** from one codebase — a parallel release pipeline (universal DMG +
+  NSIS `-setup.exe`/`.msi`) with a merged `latest.json`, so signed **auto-update
+  works on both**. See [docs/windows-support.md](docs/windows-support.md).
 - **v0.12.3** — **Reverted multi-monitor changes.** v0.12.0 introduced
   positioning regressions — the cat vanished when opening feed / fishing / grab,
   flickered away on first launch, and disappeared intermittently — because the
@@ -631,9 +647,20 @@ clawd/
 - [x] **Social mode** — LAN (mDNS) + remote invite-code rooms (iroh P2P)
 - [x] **Session-usage integration** — 5h/weekly gauges, activity-aware mood,
       near-cap notification (covers claude.ai web usage)
-- [x] Automated universal DMG releases (tag **or** `workflow_dispatch`)
+- [x] Automated releases (tag **or** `workflow_dispatch`)
 - [x] In-app **auto-update** with signed artifacts
 - [x] Adjustable character size · cursor-aware multi-monitor · auto-start
+- [x] **macOS + Windows** — one codebase, parallel release pipeline, signed
+      auto-update on both
+- [x] **Usage reactions** — zoomies on a token burst, wake-up stretch on a fresh
+      5-hour window
+- [x] **Celebrations & easter eggs** — tower-tier confetti, rapid-click party,
+      rare golden cat
+- [x] **Care nudges** — late-night & long-stretch break reminders
+- [x] **Personality** — idle thoughts, time-of-day & holiday greetings, naming
+- [x] **Achievements (도감) · bond level · 🍅 pomodoro**
+- [x] **🎩 dress-up** — emoji hats/accessories
+- [x] **재미 효과 toggle** — turn the whole playful layer off for a calm cat
 
 **Next up**
 
@@ -641,11 +668,12 @@ clawd/
 - [ ] Team dashboard — several cats splitting shared usage
 - [ ] A companion **CLI** (`clawd status`) for headless usage
 - [ ] Daily / weekly usage **summary card**
-- [ ] **Notarize** the app so Gatekeeper stops warning on first launch
+- [ ] **Notarize** (macOS) / **Authenticode-sign** (Windows) so the OS stops
+      warning on first launch
 - [ ] Richer / Lottie animations and more distinct per-state poses
 - [ ] Optional sounds (meow, hiss), off by default
 - [ ] Incremental log tailing instead of full rescans
-- [ ] Windows / Linux support
+- [ ] **Linux** support
 
 ## Contributing
 
