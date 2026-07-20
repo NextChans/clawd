@@ -10,8 +10,11 @@ import { useConfig } from './hooks/useConfig';
 import { usePeers, useRemoteRoom } from './hooks/usePresence';
 import { useSessionUsage } from './hooks/useSessionUsage';
 import { useUpdater } from './hooks/useUpdater';
+import { useStats } from './hooks/useStats';
+import { usePomodoro } from './hooks/usePomodoro';
 import { classifyWithReason, STATE_LABEL } from './hooks/useCatState';
 import { ACTIVITY_BADGE, CAT_COLORS, CAT_SCALE_MAX, CAT_SCALE_MIN, Config } from './types';
+import { ACHIEVEMENTS, bondLevel, BOND_MAX_LEVEL, unlockedIds } from './achievements';
 import { formatIdle, formatRate, formatTokens } from './utils/format';
 import './details.css';
 
@@ -53,6 +56,8 @@ export default function Details() {
   const sessionPct = session.usage?.ok ? session.usage.session_pct : null;
   const { state, reason } = classifyWithReason(usage, config, sessionPct, session.rising);
   const updater = useUpdater();
+  const { stats } = useStats();
+  const pomo = usePomodoro();
   const peers = usePeers();
   const room = useRemoteRoom(config, state);
   const [joinCode, setJoinCode] = useState('');
@@ -429,6 +434,76 @@ export default function Details() {
             *Exhausted는 최근 30분간 rate가 alert 임계 이상으로 지속되면 자동 진입
           </p>
         </div>
+      </section>
+
+      {/* ── 놀이 (유대감 · 뽀모도로 · 도감) ── */}
+      <section className="d-group">
+        <h3 className="d-group-title">놀이</h3>
+
+        {/* Bond meter */}
+        {(() => {
+          const bond = bondLevel(stats);
+          const pct = bond.atMax ? 100 : Math.round((bond.intoLevel / bond.span) * 100);
+          return (
+            <div className="d-bond">
+              <div className="d-bond-top">
+                <span className="d-bond-label">💞 유대감 · Lv.{bond.level} {bond.label}</span>
+                <span className="d-bond-xp">{bond.atMax ? 'MAX' : `${bond.intoLevel}/${bond.span}`}</span>
+              </div>
+              <div className="d-bond-bar">
+                <div className="d-bond-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="d-bond-note">
+                Lv.{bond.level}/{BOND_MAX_LEVEL} · 먹이·쓰다듬기·집중으로 올라가요
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Pomodoro */}
+        <div className="d-pomo">
+          <div className="d-pomo-info">
+            <span className="d-pomo-phase">
+              🍅 {pomo.phase === 'focus' ? '집중 중' : pomo.phase === 'break' ? '휴식 중' : '뽀모도로'}
+            </span>
+            <span className="d-pomo-time">
+              {pomo.running
+                ? `${Math.floor(pomo.remaining / 60)}:${String(pomo.remaining % 60).padStart(2, '0')}`
+                : '25:00'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="d-pomo-btn"
+            onClick={pomo.running ? pomo.stop : pomo.start}
+          >
+            {pomo.running ? '중지' : '집중 시작'}
+          </button>
+        </div>
+
+        {/* 도감 (achievements) */}
+        {(() => {
+          const unlocked = unlockedIds(stats);
+          return (
+            <div className="d-dex">
+              {ACHIEVEMENTS.map((a) => {
+                const done = unlocked.has(a.id);
+                const p = a.progress(stats);
+                return (
+                  <div
+                    key={a.id}
+                    className={done ? 'd-dex-item done' : 'd-dex-item'}
+                    title={a.desc}
+                  >
+                    <span className="d-dex-emoji">{done ? a.emoji : '🔒'}</span>
+                    <span className="d-dex-title">{a.title}</span>
+                    <span className="d-dex-prog">{done ? '완료' : `${p.cur}/${p.target}`}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </section>
 
       {/* ── 시스템 ── */}

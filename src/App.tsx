@@ -22,6 +22,9 @@ import { useLateNightCare } from './hooks/useLateNightCare';
 import { useGoldenMoment } from './hooks/useGoldenMoment';
 import { useBreakReminder } from './hooks/useBreakReminder';
 import { useIdleThoughts } from './hooks/useIdleThoughts';
+import { useStats } from './hooks/useStats';
+import { ACHIEVEMENTS, Achievement, unlockedIds } from './achievements';
+import { FOCUS_EVENT, FOCUS_DONE_EVENT } from './hooks/usePomodoro';
 import { ACTIVITY_FOR_STATE, CatState } from './types';
 import { formatRate, formatTokens } from './utils/format';
 import './App.css';
@@ -139,6 +142,14 @@ export default function App() {
   const breakRaw = useBreakReminder(usage);
   // Occasional idle "thoughts" — a soft bit of personality.
   const thoughtRaw = useIdleThoughts(config.funEffects);
+  // Persisted play stats (도감 achievements + bond); the cat window records the
+  // events, the details window reads them.
+  const { stats, record } = useStats();
+  // Pomodoro focus, owned by the details window; the cat only reflects it.
+  const [focusing, setFocusing] = useState(false);
+  const [focusDone, setFocusDone] = useState(false);
+  // The most recently unlocked achievement, surfaced as a brief bubble.
+  const [achievement, setAchievement] = useState<Achievement | null>(null);
 
   // The whole playful layer is gated by one setting so it can be turned off for
   // a calm, minimal cat. Hooks always run (rules of hooks); we just withhold
@@ -405,6 +416,7 @@ export default function App() {
     const un = listen('feed-cat', () => {
       timers.forEach(clearTimeout);
       timers.length = 0;
+      void record('feed');
       setFed(true);
       setFeedPhase('eating');
       // Perk up into a content purr for the tail end of the reaction window.
@@ -436,6 +448,58 @@ export default function App() {
       un.then((off) => off());
     };
   }, []);
+
+  // Record play events into the shared stats (drives 도감 + bond). Edge-based:
+  // each records once when its raw signal first turns on. Recording is *not*
+  // gated by funEffects — the 도감 keeps filling even in calm mode; only the
+  // celebratory bubbles below respect the toggle.
+  useEffect(() => {
+    if (goldenRaw) void record('golden');
+  }, [goldenRaw, record]);
+  useEffect(() => {
+    if (nightCareRaw) void record('night');
+  }, [nightCareRaw, record]);
+  useEffect(() => {
+    if (usage.tower_tier >= 3) void record('tower3');
+  }, [usage.tower_tier, record]);
+
+  // Pomodoro (owned by the details window) reflected on the cat: a focus badge +
+  // calm while focusing, and a celebratory beat when a focus block completes.
+  useEffect(() => {
+    let t: number | undefined;
+    const unFocus = listen<{ active: boolean }>(FOCUS_EVENT, (e) => setFocusing(!!e.payload?.active));
+    const unDone = listen(FOCUS_DONE_EVENT, () => {
+      void record('focus');
+      setFocusDone(true);
+      if (t) clearTimeout(t);
+      t = window.setTimeout(() => setFocusDone(false), 5000);
+    });
+    return () => {
+      if (t) clearTimeout(t);
+      unFocus.then((off) => off());
+      unDone.then((off) => off());
+    };
+  }, [record]);
+
+  // New-achievement watch: when the unlocked set grows, surface the newest one.
+  // Baseline on the first run so already-earned achievements don't re-announce.
+  const prevUnlocked = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const cur = unlockedIds(stats);
+    if (prevUnlocked.current === null) {
+      prevUnlocked.current = cur;
+      return;
+    }
+    let fresh: Achievement | undefined;
+    for (const a of ACHIEVEMENTS) {
+      if (cur.has(a.id) && !prevUnlocked.current.has(a.id)) fresh = a;
+    }
+    prevUnlocked.current = cur;
+    if (fresh) {
+      setAchievement(fresh);
+      window.setTimeout(() => setAchievement(null), 5000);
+    }
+  }, [stats]);
 
   // Drive the plaything across the screen: snap to its start, glide to the
   // target over `duration_ms`, then fade it out. The per-kind flourish (roll /
@@ -640,6 +704,7 @@ export default function App() {
       if (rapidClicks.current >= 4) {
         rapidClicks.current = 0;
         party();
+        void record('party');
       }
       return;
     }
@@ -666,6 +731,8 @@ export default function App() {
       setTtBelow(r.top < 96); // not enough headroom above → sit below the cat
     }
     setHover(true);
+    // Hovering the cat in Grab is a pet — counts toward the bond meter.
+    if (grab) void record('pet');
   };
 
   // Pose overrides: greet with a forward sit; a just-fed exhausted cat perks up
@@ -967,6 +1034,7 @@ export default function App() {
             !grab &&
             !fishing &&
             !greeting &&
+            !focusing &&
             !reaction &&
             !celebration &&
             !nightCare &&
@@ -994,6 +1062,53 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               ✨ 골든 캣이다냥! 행운이 온다냥
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Achievement unlocked (gated by fun-effects; the 도감 still fills when
+            off, this just skips the celebratory pop-up). */}
+        <AnimatePresence>
+          {fun && achievement && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              {achievement.emoji} 업적 달성: {achievement.title}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Pomodoro focus block completed. */}
+        <AnimatePresence>
+          {focusDone && !greeting && (
+            <motion.div
+              className="react-bubble"
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              🍅 집중 완료! 잘했다냥
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Focus badge — a quiet 🍅 while a pomodoro focus block is running. */}
+        <AnimatePresence>
+          {focusing && !grab && !fishing && (
+            <motion.div
+              className="focus-badge"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.2 }}
+              aria-hidden
+            >
+              🍅
             </motion.div>
           )}
         </AnimatePresence>

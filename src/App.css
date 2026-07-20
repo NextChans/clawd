@@ -243,6 +243,19 @@
   z-index: 11;
 }
 
+/* Pomodoro focus badge — a small 🍅 that rides above the cat while a focus
+   block runs, so you can see it's "in the zone" at a glance. */
+.focus-badge {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 12;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
 /* Reaction FX burst above the cat — one-shot pop, same motion as the feed
    sparkle so both reactions feel of a piece. */
 .react-fx {

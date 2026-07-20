@@ -92,6 +92,11 @@ invite friends' cats over the **network**.
   for a long unbroken stretch? The cat gently nudges you to rest.
 - **💬 Personality** — the launch greeting is time-of-day (and holiday) aware,
   and the cat muses the occasional idle thought.
+- **🏆 Achievements & 💞 bond** — a 도감 of unlockables (first golden cat, 10
+  feeds, tower master, …) and a friendship level that grows as you feed, pet, and
+  focus — both in the details window.
+- **🍅 Pomodoro** — a focus timer the cat keeps with you: it stays calm with a
+  🍅 badge while you focus and celebrates when the block completes.
 - **🏷️ Name & calm mode** — name your cat: it shows in the greeting + hover
   tooltip **and** under your cat on friends' screens in social mode (one name for
   both). A **재미 효과** toggle turns all the playful effects off for a minimal cat.

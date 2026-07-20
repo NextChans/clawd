@@ -609,3 +609,116 @@
   border-color: rgba(229, 121, 75, 0.5);
   color: #e5794b;
 }
+
+/* ── 놀이: 유대감 · 뽀모도로 · 도감 ── */
+.d-bond {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.d-bond-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 600;
+}
+.d-bond-xp {
+  font-size: 11px;
+  opacity: 0.7;
+  font-weight: 500;
+}
+.d-bond-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(128, 128, 128, 0.18);
+  overflow: hidden;
+}
+.d-bond-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f2a7c3, #e5794b);
+  transition: width 0.4s ease;
+}
+.d-bond-note {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.d-pomo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  border-radius: 10px;
+  background: rgba(128, 128, 128, 0.06);
+}
+.d-pomo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.d-pomo-phase {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.d-pomo-time {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.d-pomo-btn {
+  padding: 7px 14px;
+  border: 1px solid rgba(229, 121, 75, 0.5);
+  border-radius: 8px;
+  background: rgba(229, 121, 75, 0.12);
+  color: #e5794b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.d-pomo-btn:hover {
+  background: rgba(229, 121, 75, 0.22);
+}
+
+.d-dex {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+}
+.d-dex-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: rgba(128, 128, 128, 0.08);
+  text-align: center;
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+.d-dex-item.done {
+  opacity: 1;
+  filter: none;
+  background: rgba(242, 167, 195, 0.14);
+}
+.d-dex-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+.d-dex-title {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.d-dex-prog {
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
